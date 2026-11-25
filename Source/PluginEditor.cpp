@@ -14,6 +14,40 @@ const juce::Colour kAmber       (0xfff59e0b);
 const juce::Colour kSilver      (0xffd5dce6);
 const juce::Colour kMutedText   (0xff9aa4b6);
 
+constexpr const char* kFactoryPresetNames[31] = {
+    "Fidiu Default",
+    "Bus: Studio Bus Glue",
+    "Mastering: Transparent",
+    "Vocal: Forward Opto",
+    "Drums: Parallel Punch",
+    "Limiting: Zero-Overshoot",
+    "Electronic: Kick Ducking",
+    "Bus: Warm Tape Mix Bus",
+    "Bus: Side Width Control",
+    "Mastering: Loud & Clear",
+    "Mastering: Mid Analog Sheen",
+    "Kick: Sub Weight & Snap",
+    "Kick: Tight Electronic Click",
+    "Bass: Sub Lock Opto",
+    "Bass: Parallel Growl",
+    "Hats: Silky De-Harsh",
+    "Guitar: Acoustic Body",
+    "Guitar: Crunch Tightener",
+    "Piano: Concert Grand",
+    "Synths: Lush Wide Pad",
+    "Synths: Parallel Arp Slap",
+    "Vocal: Intimate Tube Lead",
+    "Vocal: Parallel Air & Pop",
+    "Vocal: De-Ess & Sibilance Control",
+    "Orchestra: Symphonic Bus Glue",
+    "Orchestra: Lush Strings Legato",
+    "Orchestra: Brass & Timpani Impact",
+    "EDM: Big Room Sidechain Pump",
+    "Techno: Industrial Kick & Rumble",
+    "Trap: 808 Sub & Snappy Hats",
+    "House: Groovy Mix Bus Pump"
+};
+
 float computeCurveOutDb(float inDb, float thresh, float ratio, float knee, float range) {
     if (ratio <= 1.001f) return inDb;
     const float slope = 1.0f - 1.0f / (ratio >= 99.0f ? 1000.0f : ratio);
@@ -96,15 +130,15 @@ juce::Rectangle<int> FidiuLookAndFeel::getTooltipBounds(const juce::String& tipT
     s.setJustification(juce::Justification::centredLeft);
     const int sep = tipText.indexOf("\n");
     if (sep > 0) {
-        s.append(tipText.substring(0, sep) + "\n", juce::FontOptions(12.0f, juce::Font::bold), kCyan);
-        s.append(tipText.substring(sep + 1), juce::FontOptions(11.5f), juce::Colour(0xffdce3ee));
+        s.append(tipText.substring(0, sep) + "\n", juce::FontOptions(14.0f, juce::Font::bold), kCyan);
+        s.append(tipText.substring(sep + 1), juce::FontOptions(13.0f), juce::Colour(0xffdce3ee));
     } else {
-        s.append(tipText, juce::FontOptions(11.5f), juce::Colour(0xffdce3ee));
+        s.append(tipText, juce::FontOptions(13.0f), juce::Colour(0xffdce3ee));
     }
     juce::TextLayout tl;
-    tl.createLayoutWithBalancedLineLengths(s, 280.0f);
-    const int w = static_cast<int>(std::ceil(tl.getWidth())) + 24;
-    const int h = static_cast<int>(std::ceil(tl.getHeight())) + 20;
+    tl.createLayoutWithBalancedLineLengths(s, 315.0f);
+    const int w = static_cast<int>(std::ceil(tl.getWidth())) + 28;
+    const int h = static_cast<int>(std::ceil(tl.getHeight())) + 22;
     const int x = juce::jlimit(parentArea.getX() + 6, std::max(parentArea.getX() + 6, parentArea.getRight() - w - 6), screenPos.x - w / 2);
     int y = screenPos.y - h - 14;
     if (y < parentArea.getY() + 6)
@@ -123,14 +157,14 @@ void FidiuLookAndFeel::drawTooltip(juce::Graphics& g, const juce::String& text, 
     s.setJustification(juce::Justification::centredLeft);
     const int sep = text.indexOf("\n");
     if (sep > 0) {
-        s.append(text.substring(0, sep) + "\n", juce::FontOptions(12.0f, juce::Font::bold), kCyan);
-        s.append(text.substring(sep + 1), juce::FontOptions(11.5f), juce::Colour(0xffdce3ee));
+        s.append(text.substring(0, sep) + "\n", juce::FontOptions(14.0f, juce::Font::bold), kCyan);
+        s.append(text.substring(sep + 1), juce::FontOptions(13.0f), juce::Colour(0xffdce3ee));
     } else {
-        s.append(text, juce::FontOptions(11.5f), juce::Colour(0xffdce3ee));
+        s.append(text, juce::FontOptions(13.0f), juce::Colour(0xffdce3ee));
     }
     juce::TextLayout tl;
-    tl.createLayoutWithBalancedLineLengths(s, static_cast<float>(std::max(80, width - 22)));
-    tl.draw(g, bounds.reduced(10.0f, 8.0f));
+    tl.createLayoutWithBalancedLineLengths(s, static_cast<float>(std::max(80, width - 26)));
+    tl.draw(g, bounds.reduced(12.0f, 10.0f));
 }
 
 void FidiuLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int width, int height,
@@ -210,33 +244,47 @@ FidiuCompressorEditor::FidiuCompressorEditor(FidiuCompressorProcessor& p)
 
     smoothedBins.fill(-90.0f);
 
-    static const char* presetNames[20] = {
-        "Bus: Studio Bus Glue",
-        "Mastering: Transparent",
-        "Vocal: Forward Opto",
-        "Drums: Parallel Punch",
-        "Limiting: Zero-Overshoot",
-        "Electronic: Kick Ducking",
-        "Bus: Warm Tape Mix Bus",
-        "Bus: Side Width Control",
-        "Mastering: Loud & Clear",
-        "Mastering: Mid Analog Sheen",
-        "Kick: Sub Weight & Snap",
-        "Kick: Tight Electronic Click",
-        "Bass: Sub Lock Opto",
-        "Bass: Parallel Growl",
-        "Hats: Silky De-Harsh",
-        "Guitar: Acoustic Body",
-        "Guitar: Crunch Tightener",
-        "Piano: Concert Grand",
-        "Synths: Lush Wide Pad",
-        "Synths: Parallel Arp Slap"
+    rebuildPresetMenu(1);
+    presetBox.onChange = [this] {
+        const int selId = presetBox.getSelectedId();
+        if (selId == kSavePresetMenuId) {
+            presetBox.setSelectedId(lastValidPresetId, juce::dontSendNotification);
+            openSavePresetDialog();
+            return;
+        }
+        if (selId >= kUserPresetIdBase) {
+            const int uIdx = selId - kUserPresetIdBase;
+            if (uIdx >= 0 && uIdx < static_cast<int>(userPresetFiles.size())) {
+                if (auto xml = juce::XmlDocument::parse(userPresetFiles[static_cast<size_t>(uIdx)])) {
+                    if (xml->hasTagName(audioProcessor.apvts.state.getType())) {
+                        audioProcessor.apvts.replaceState(juce::ValueTree::fromXml(*xml));
+                        lastValidPresetId = selId;
+                        updateButtonStates();
+                        repaint();
+                    }
+                }
+            }
+            return;
+        }
+        if (selId >= 1 && selId <= 31) {
+            lastValidPresetId = selId;
+            applyPreset(selId - 1, false);
+        }
     };
-    for (int i = 0; i < 20; ++i)
-        presetBox.addItem(presetNames[i], i + 1);
-    presetBox.setSelectedId(1, juce::dontSendNotification);
-    presetBox.onChange = [this] { applyPreset(presetBox.getSelectedId() - 1); };
     addAndMakeVisible(presetBox);
+
+    scPresetBox.setColour(juce::ComboBox::textColourId, kCyan);
+    scPresetBox.onChange = [this] {
+        const int scId = scPresetBox.getSelectedId();
+        if (scId >= 1 && scId <= 10) {
+            applySidechainPreset(scId - 1);
+        }
+    };
+    addAndMakeVisible(scPresetBox);
+
+    savePresetOverlay.onConfirm = [this] { commitSavePreset(); };
+    savePresetOverlay.onCancel = [this] { closeSavePresetDialog(); };
+    addChildComponent(savePresetOverlay);
 
     auto styleBtn = [this](juce::TextButton& b, const juce::Colour& onCol) {
         b.setClickingTogglesState(true);
@@ -280,7 +328,13 @@ FidiuCompressorEditor::FidiuCompressorEditor(FidiuCompressorProcessor& p)
         copyAbBtn.setButtonText(audioProcessor.getActiveBank() == 0 ? "A -> B" : "B -> A");
         copyFlashFrames = 55;
     };
-    resetBtn.onClick = [this] { audioProcessor.resetToDefault(); updateButtonStates(); repaint(); };
+    resetBtn.onClick = [this] {
+        lastValidPresetId = 1;
+        presetBox.setSelectedId(1, juce::dontSendNotification);
+        applyPreset(0, false);
+        updateButtonStates();
+        repaint();
+    };
     analyzeBtn.onClick = [this] { startSignalAnalysis(); };
     langBtn.onClick = [this] {
         const bool isRo = audioProcessor.uiLanguage.load(std::memory_order_relaxed) == 1;
@@ -304,9 +358,10 @@ FidiuCompressorEditor::FidiuCompressorEditor(FidiuCompressorProcessor& p)
         sugPresetBtns[i].setClickingTogglesState(false);
         sugPresetBtns[i].setVisible(false);
         sugPresetBtns[i].onClick = [this, i] {
-            const int pIdx = std::clamp(sugPresetIndices[i], 0, 19);
+            const int pIdx = std::clamp(sugPresetIndices[i], 0, 30);
+            lastValidPresetId = pIdx + 1;
             presetBox.setSelectedId(pIdx + 1, juce::dontSendNotification);
-            applyPreset(pIdx);
+            applyPreset(pIdx, hasValidAnalysis);
             updateButtonStates();
             repaint();
         };
@@ -323,8 +378,8 @@ FidiuCompressorEditor::FidiuCompressorEditor(FidiuCompressorProcessor& p)
 
     dispModeBtn.setClickingTogglesState(false);
     scModeBtn.setClickingTogglesState(false);
-    dispModeBtn.onClick = [this] { displayMode = DisplayMode::Dynamics; updateButtonStates(); repaint(); };
-    scModeBtn.onClick = [this] { displayMode = DisplayMode::Sidechain; updateButtonStates(); repaint(); };
+    dispModeBtn.onClick = [this] { displayMode = DisplayMode::Dynamics; updateButtonStates(); resized(); repaint(); };
+    scModeBtn.onClick = [this] { displayMode = DisplayMode::Sidechain; updateButtonStates(); resized(); repaint(); };
     kneeToggleBtn.setToggleState(true, juce::dontSendNotification);
     kneeToggleBtn.onClick = [this] { showKnee = kneeToggleBtn.getToggleState(); repaint(); };
 
@@ -359,6 +414,14 @@ FidiuCompressorEditor::FidiuCompressorEditor(FidiuCompressorProcessor& p)
         chModeBtns[static_cast<size_t>(i)].setButtonText(chModeNames[i]);
         chModeBtns[static_cast<size_t>(i)].setClickingTogglesState(false);
         chModeBtns[static_cast<size_t>(i)].onClick = [this, i] { setChoiceParam("channelMode", i); };
+    }
+
+    static const char* scMsNames[3] = { "ST", "Mid", "Side" };
+    for (int i = 0; i < 3; ++i) {
+        styleBtn(scMsBtns[static_cast<size_t>(i)], chModeCols[static_cast<size_t>(i)]);
+        scMsBtns[static_cast<size_t>(i)].setButtonText(scMsNames[i]);
+        scMsBtns[static_cast<size_t>(i)].setClickingTogglesState(false);
+        scMsBtns[static_cast<size_t>(i)].onClick = [this, i] { setChoiceParam("scMidSide", i); };
     }
 
     static const char* slopeNames[4] = { "6", "12", "24", "48" };
@@ -490,17 +553,20 @@ void FidiuCompressorEditor::applyTooltipLanguage() {
     ));
 
     presetPrevBtn.setTooltip(tr(
-        "Previous Preset\nSteps backward through the 20 factory presets.",
-        "Preset Anterior\nTrece la presetul anterior din cele 20 de preseturi integrate."
+        "Previous Preset\nSteps backward through saved user presets and the 31 factory presets (starting with Fidiu Default).",
+        "Preset Anterior\nTrece la presetul anterior din preseturile salvate și cele 31 de preseturi integrate (începând cu Fidiu Default)."
     ));
     presetBox.setTooltip(tr(
-        "Factory Presets\nSelect from 20 studio presets for Mix Bus, Mastering, Vocals, Drums, Kick, Bass, Hats, Guitar, Piano, and Synths.",
-        "Preseturi de Fabrică\nAlege din 20 de preseturi de studio pentru Mix Bus, Mastering, Voce, Tobe, Kick, Bass, Hats, Chitară, Pian și Synths."
+        "Presets & Save Preset As\nFirst menu item saves your current settings as a User Preset. Below are your saved presets and 31 factory presets (starting with neutral Fidiu Default).",
+        "Preseturi & Salvare Preset\nPrima opțiune („+ Salvează Preset Ca...”) salvează setările curente ca preset propriu. Dedesubt găsești preseturile tale și cele 31 de preseturi de fabrică (inclusiv Fidiu Default neutru)."
     ));
     presetNextBtn.setTooltip(tr(
-        "Next Preset\nSteps forward to the next factory preset.",
+        "Next Preset\nSteps forward to the next preset in the list.",
         "Preset Următor\nAvansează la următorul preset din listă."
     ));
+    rebuildPresetMenu(lastValidPresetId);
+    rebuildScPresetMenu();
+    syncSidechainPresetBox();
     bankABtn.setTooltip(tr(
         "Compare Bank A\nSwitches to parameter slot A for instant A/B comparison.",
         "Bancă Comparație A\nActivează slotul A de parametri pentru comparație rapidă A/B."
@@ -514,12 +580,12 @@ void FidiuCompressorEditor::applyTooltipLanguage() {
         "Copiere Slot A/B\nCopiază toate setările din slotul activ (A sau B) în celălalt slot pentru variații rapide."
     ));
     resetBtn.setTooltip(tr(
-        "Reset Parameters\nRestores all compressor, Coloriture, and sidechain controls to defaults.",
-        "Resetare Parametri\nReaduce compresorul, Coloriture și sidechain-ul la valorile implicite."
+        "Reset Parameters (Fidiu Default)\nRestores all compressor, Coloriture, and sidechain settings to Fidiu Default — completely transparent with zero change between input and output.",
+        "Resetare Parametri (Fidiu Default)\nReaduce toți parametrii la Fidiu Default — semnal complet transparent fără nicio modificare între intrare și ieșire."
     ));
     analyzeBtn.setTooltip(tr(
-        "Analyze Input Signal\nScans frequency balance, crest factor, and Mid/Side width to identify the signal and suggest matching presets.",
-        "Analizare Semnal Intrare\nAnalizează spectrul, factorul crest și lățimea Mid/Side pentru a detecta instrumentul sau mix-busul și a sugera preseturi."
+        "Analyze Input Signal\nDetects Full Mix, Drums, Bass, Pads/Synths, Piano, Guitar, Classical/Orchestra, Vocals, EDM, Techno, Trap, or House, suggests presets, and automatically calibrates Threshold.",
+        "Analizare Semnal Intrare\nDetectează tipul de semnal (Mix Întreg, Drums, Bass, Pads/Synths, Pian, Chitară, Clasică/Orchestră, Voce, EDM, Techno, Trap, House), sugerează preseturi și reglează automat Threshold."
     ));
     levelMatchBtn.setTooltip(tr(
         "Auto Level Match\nMatches compressed output RMS loudness to input loudness for fair Bypass comparison.",
@@ -540,6 +606,10 @@ void FidiuCompressorEditor::applyTooltipLanguage() {
     kneeToggleBtn.setTooltip(tr(
         "Transfer Knee Curve\nToggles the live input-vs-output transfer curve overlay.",
         "Curbă Transfer Knee\nActivează sau ascunde graficul live al curbei de transfer Input/Output."
+    ));
+    scPresetBox.setTooltip(tr(
+        "Sidechain EQ Presets\nQuickly sets HPF, LPF, Bell EQ, slopes, and Sidechain Mid/Side focus for Kick, Snare, Vocal De-Ess, Bass, Hats, Mid, or Side.",
+        "Preseturi Sidechain EQ\nConfigurează automat HPF, LPF, Bell EQ, pantele și modul Mid/Side din sidechain pentru Kick, Snare, De-Ess Voce, Bass, Hats, Mid sau Side."
     ));
 
     static const char* styleTipsEn[8] = {
@@ -651,6 +721,19 @@ void FidiuCompressorEditor::applyTooltipLanguage() {
         "External Sidechain\nTriggers compression from the external sidechain input bus.",
         "Sidechain Extern\nDeclanșează compresia dintr-o sursă externă rutată pe intrarea de sidechain din DAW."
     ));
+    static const char* scMsTipsEn[3] = {
+        "Sidechain Detector: Stereo (L/R)\nFeeds full stereo Left/Right sidechain audio into the detector.",
+        "Sidechain Detector: Mid (Center)\nTriggers compression purely from the center Mid component of the sidechain (ideal for Kick, Snare, or Vocals).",
+        "Sidechain Detector: Side (Width)\nTriggers compression purely from the stereo Side difference component of the sidechain."
+    };
+    static const char* scMsTipsRo[3] = {
+        "Detector Sidechain: Stereo (L/R)\nTrimite întregul semnal sidechain stereo Left/Right către detector.",
+        "Detector Sidechain: Mid (Centru)\nDeclanșează compresia exclusiv din componenta centrală Mid a sidechain-ului (ideal pentru Kick, Snare sau Voce).",
+        "Detector Sidechain: Side (Lateral)\nDeclanșează compresia exclusiv din informația laterală Side a sidechain-ului."
+    };
+    for (int i = 0; i < 3; ++i)
+        scMsBtns[static_cast<size_t>(i)].setTooltip(tr(scMsTipsEn[i], scMsTipsRo[i]));
+
     scAudBtn.setTooltip(tr(
         "Sidechain Audition\nRoutes the filtered sidechain detector signal directly to output for monitoring.",
         "Audiție Sidechain\nTrimite semnalul filtrat din detector direct la ieșire pentru a auzi exact ce declanșează compresia."
@@ -781,60 +864,238 @@ int FidiuCompressorEditor::getChoiceParam(const juce::String& paramId) const {
     return 0;
 }
 
-void FidiuCompressorEditor::stepPreset(int dir) {
-    const int count = presetBox.getNumItems();
-    if (count <= 0) return;
-    const int curIdx = std::max(0, presetBox.getSelectedId() - 1);
-    const int nextIdx = (curIdx + dir + count) % count;
-    presetBox.setSelectedId(nextIdx + 1, juce::dontSendNotification);
-    applyPreset(nextIdx);
+juce::File FidiuCompressorEditor::getUserPresetsDirectory() const {
+    return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+        .getChildFile("FidiuAudio")
+        .getChildFile("FidiuCompressor")
+        .getChildFile("Presets");
 }
 
-void FidiuCompressorEditor::applyPreset(int idx) {
-    struct PresetDef {
-        int style, colorMode, os, chMode;
-        float thresh, ratio, knee, range, att, hold, rel;
-        bool autoRel, parallelOn, autoGain, laOn, scExt;
-        float charPct, mix, wetGain, dryGain, laMs, link;
-        bool hpfOn, lpfOn, eqOn;
-        float hpfFreq, lpfFreq, eqFreq, eqGain, eqQ;
-        int hpfSlope, lpfSlope;
-    };
+void FidiuCompressorEditor::rebuildPresetMenu(int selectItemId) {
+    const bool isRo = audioProcessor.uiLanguage.load(std::memory_order_relaxed) == 1;
+    presetBox.clear(juce::dontSendNotification);
+    selectablePresetIds.clear();
+    userPresetFiles.clear();
 
-    static constexpr PresetDef presets[20] = {
-        { 5, 1, 1, 0, -18.0f,  4.0f, 12.0f, 36.0f, 12.0f,  8.0f, 140.0f, true,  false, false, true,  false, 24.0f, 100.0f, 2.4f, 0.0f,  4.0f, 100.0f, true,  false, false,   95.0f, 12000.0f, 2400.0f, 0.0f, 1.2f, 2, 1 },
-        { 4, 3, 2, 0, -14.5f,  2.2f, 24.0f, 12.0f, 28.0f,  0.0f, 220.0f, true,  false, true,  true,  false, 14.0f, 100.0f, 1.5f, 0.0f,  2.5f,  90.0f, true,  false, false,   65.0f, 12000.0f, 2400.0f, 0.0f, 1.2f, 1, 1 },
-        { 3, 2, 1, 0, -21.0f,  3.5f, 16.0f, 24.0f,  6.5f, 12.0f, 160.0f, true,  false, false, true,  false, 32.0f, 100.0f, 4.0f, 0.0f,  3.0f, 100.0f, true,  false, true,   130.0f, 12000.0f, 3200.0f, 3.5f, 1.4f, 2, 1 },
-        { 6, 1, 2, 0, -26.0f, 10.0f,  6.0f, 42.0f, 18.0f, 15.0f,  85.0f, false, true,  false, false, false, 58.0f,  52.0f, 6.5f, 0.0f,  0.0f, 100.0f, true,  true,  false,  110.0f,  8500.0f, 2400.0f, 0.0f, 1.2f, 2, 1 },
-        { 0, 0, 2, 0, -11.0f, 100.0f, 1.5f, 24.0f,  0.1f, 10.0f,  75.0f, false, false, false, true,  false,  8.0f, 100.0f, 3.0f, 0.0f, 10.0f, 100.0f, false, false, false,   30.0f, 12000.0f, 2400.0f, 0.0f, 1.2f, 1, 1 },
-        { 7, 2, 1, 0, -24.0f,  8.0f,  8.0f, 30.0f,  1.5f, 25.0f, 175.0f, false, false, false, true,  true,  28.0f, 100.0f, 2.0f, 0.0f,  2.0f, 100.0f, true,  true,  false,   45.0f,   450.0f, 2400.0f, 0.0f, 1.2f, 1, 2 },
-        { 5, 2, 1, 0, -16.5f,  2.5f, 18.0f, 18.0f, 18.0f,  4.0f, 180.0f, true,  false, false, true,  false, 34.0f, 100.0f, 1.8f, 0.0f,  2.0f, 100.0f, true,  false, false,   80.0f, 12000.0f, 2400.0f, 0.0f, 1.2f, 1, 1 },
-        { 5, 3, 1, 2, -22.0f,  3.0f, 14.0f, 16.0f, 20.0f,  6.0f, 190.0f, true,  false, false, true,  false, 18.0f, 100.0f, 1.2f, 0.0f,  2.5f, 100.0f, true,  false, false,  140.0f, 12000.0f, 2400.0f, 0.0f, 1.2f, 2, 1 },
-        { 4, 0, 2, 0, -12.5f,  2.0f, 20.0f,  8.0f, 35.0f,  0.0f, 210.0f, true,  false, true,  true,  false, 10.0f, 100.0f, 1.4f, 0.0f,  3.5f,  92.0f, true,  false, false,   55.0f, 12000.0f, 2400.0f, 0.0f, 1.2f, 1, 1 },
-        { 4, 1, 2, 1, -15.5f,  1.8f, 16.0f, 10.0f, 25.0f,  2.0f, 185.0f, true,  false, true,  true,  false, 22.0f, 100.0f, 1.2f, 0.0f,  2.0f, 100.0f, true,  false, false,   70.0f, 12000.0f, 2400.0f, 0.0f, 1.2f, 1, 1 },
-        { 6, 1, 1, 0, -20.0f,  5.5f,  6.0f, 28.0f, 22.0f, 12.0f,  70.0f, false, false, false, false, false, 36.0f, 100.0f, 3.2f, 0.0f,  0.0f, 100.0f, true,  true,  false,   45.0f,  3500.0f, 2400.0f, 0.0f, 1.2f, 1, 1 },
-        { 1, 3, 1, 0, -19.0f,  6.5f,  4.0f, 32.0f, 15.0f,  8.0f,  85.0f, false, false, false, true,  false, 30.0f, 100.0f, 3.5f, 0.0f,  1.0f, 100.0f, true,  false, true,    35.0f, 12000.0f,   65.0f, 4.0f, 1.5f, 1, 1 },
-        { 2, 1, 1, 0, -22.0f,  4.5f, 10.0f, 28.0f,  8.0f, 15.0f, 110.0f, false, false, false, true,  false, 34.0f, 100.0f, 3.8f, 0.0f,  2.0f, 100.0f, true,  true,  false,   32.0f,  1200.0f, 2400.0f, 0.0f, 1.2f, 1, 1 },
-        { 6, 2, 2, 0, -25.0f,  8.0f,  8.0f, 36.0f, 12.0f, 10.0f,  90.0f, false, true,  false, false, false, 46.0f,  60.0f, 4.5f, 0.0f,  0.0f, 100.0f, true,  false, true,    75.0f, 12000.0f,  900.0f, 3.0f, 1.3f, 1, 1 },
-        { 0, 2, 2, 0, -18.5f,  3.2f, 14.0f, 14.0f,  0.8f,  4.0f,  60.0f, false, false, false, true,  false, 16.0f, 100.0f, 1.5f, 0.0f,  1.5f, 100.0f, true,  false, true,  2800.0f, 12000.0f, 7500.0f, 4.5f, 1.8f, 2, 1 },
-        { 2, 1, 1, 0, -19.5f,  3.5f, 14.0f, 20.0f, 14.0f,  6.0f, 150.0f, true,  false, false, true,  false, 26.0f, 100.0f, 2.5f, 0.0f,  2.0f, 100.0f, true,  false, false,  120.0f, 12000.0f, 2400.0f, 0.0f, 1.2f, 2, 1 },
-        { 1, 3, 1, 0, -17.0f,  4.8f,  8.0f, 22.0f,  9.0f,  5.0f,  95.0f, false, false, false, true,  false, 30.0f, 100.0f, 2.0f, 0.0f,  1.5f, 100.0f, true,  true,  true,   140.0f,  5500.0f,  220.0f, 3.0f, 1.6f, 2, 1 },
-        { 0, 0, 2, 0, -20.0f,  2.6f, 18.0f, 16.0f, 24.0f,  4.0f, 240.0f, true,  false, false, true,  false, 10.0f, 100.0f, 2.0f, 0.0f,  2.0f,  85.0f, true,  false, false,   75.0f, 12000.0f, 2400.0f, 0.0f, 1.2f, 1, 1 },
-        { 2, 2, 1, 0, -21.0f,  3.0f, 20.0f, 18.0f, 16.0f,  8.0f, 280.0f, true,  false, false, true,  false, 30.0f, 100.0f, 2.2f, 0.0f,  3.0f,  75.0f, true,  false, false,  110.0f, 12000.0f, 2400.0f, 0.0f, 1.2f, 1, 1 },
-        { 6, 3, 1, 0, -23.0f,  6.0f,  6.0f, 30.0f, 16.0f, 10.0f,  80.0f, false, true,  false, false, false, 36.0f,  65.0f, 4.0f, 0.0f,  0.0f, 100.0f, true,  false, true,   130.0f, 12000.0f, 2200.0f, 2.5f, 1.4f, 2, 1 }
-    };
+    // First option: Save Preset As...
+    presetBox.addItem(
+        isRo ? juce::String::fromUTF8("+ Salvează Preset Ca...") : juce::String("+ Save Preset As..."),
+        kSavePresetMenuId);
+    presetBox.addSeparator();
 
-    const auto& pr = presets[std::clamp(idx, 0, 19)];
+    auto userDir = getUserPresetsDirectory();
+    if (userDir.isDirectory()) {
+        auto found = userDir.findChildFiles(juce::File::findFiles, false, "*.xml");
+        std::sort(found.begin(), found.end(), [](const juce::File& a, const juce::File& b) {
+            return a.getFileNameWithoutExtension().compareIgnoreCase(b.getFileNameWithoutExtension()) < 0;
+        });
+        if (!found.isEmpty()) {
+            presetBox.addSectionHeading(isRo ? juce::String::fromUTF8("Preseturi Utilizator") : juce::String("User Presets"));
+            for (int i = 0; i < found.size(); ++i) {
+                const int itemId = kUserPresetIdBase + i;
+                userPresetFiles.push_back(found[i]);
+                presetBox.addItem(found[i].getFileNameWithoutExtension(), itemId);
+                selectablePresetIds.push_back(itemId);
+            }
+            presetBox.addSeparator();
+        }
+    }
+
+    presetBox.addSectionHeading(isRo ? juce::String::fromUTF8("Preseturi Fabrică") : juce::String("Factory Presets"));
+    for (int i = 0; i < 31; ++i) {
+        const int itemId = i + 1;
+        presetBox.addItem(kFactoryPresetNames[i], itemId);
+        selectablePresetIds.push_back(itemId);
+    }
+
+    const int targetId = (selectItemId > 0 && selectItemId != kSavePresetMenuId) ? selectItemId : lastValidPresetId;
+    if (presetBox.indexOfItemId(targetId) >= 0) {
+        presetBox.setSelectedId(targetId, juce::dontSendNotification);
+        lastValidPresetId = targetId;
+    } else {
+        presetBox.setSelectedId(1, juce::dontSendNotification);
+        lastValidPresetId = 1;
+    }
+}
+
+void FidiuCompressorEditor::openSavePresetDialog() {
+    const bool isRo = audioProcessor.uiLanguage.load(std::memory_order_relaxed) == 1;
+    savePresetOverlay.isRomanian = isRo;
+    savePresetOverlay.saveBtn.setButtonText(isRo ? juce::String::fromUTF8("Salvează") : juce::String("Save"));
+    savePresetOverlay.cancelBtn.setButtonText(isRo ? juce::String::fromUTF8("Anulează") : juce::String("Cancel"));
+
+    juce::String baseName = presetBox.getText().trim();
+    if (baseName.isEmpty() || baseName.startsWith("+ "))
+        baseName = "My Custom Preset";
+    else if (lastValidPresetId < kUserPresetIdBase)
+        baseName += " Custom";
+
+    savePresetOverlay.nameEditor.setText(baseName, false);
+    savePresetOverlay.setBounds(getLocalBounds());
+    savePresetOverlay.setVisible(true);
+    savePresetOverlay.toFront(true);
+    savePresetOverlay.nameEditor.grabKeyboardFocus();
+    savePresetOverlay.nameEditor.selectAll();
+    savePresetOverlay.repaint();
+}
+
+void FidiuCompressorEditor::closeSavePresetDialog() {
+    savePresetOverlay.setVisible(false);
+    repaint();
+}
+
+void FidiuCompressorEditor::commitSavePreset() {
+    const juce::String rawName = savePresetOverlay.nameEditor.getText().trim();
+    if (rawName.isEmpty())
+        return;
+
+    const juce::String safeFileName = juce::File::createLegalFileName(rawName);
+    if (safeFileName.isEmpty())
+        return;
+
+    auto userDir = getUserPresetsDirectory();
+    if (!userDir.exists())
+        userDir.createDirectory();
+
+    const juce::File targetFile = userDir.getChildFile(safeFileName + ".xml");
+    auto state = audioProcessor.apvts.copyState();
+    if (auto xml = state.createXml()) {
+        if (xml->writeTo(targetFile)) {
+            rebuildPresetMenu(-1);
+            int savedItemId = -1;
+            for (size_t i = 0; i < userPresetFiles.size(); ++i) {
+                if (userPresetFiles[i] == targetFile) {
+                    savedItemId = kUserPresetIdBase + static_cast<int>(i);
+                    break;
+                }
+            }
+            if (savedItemId > 0) {
+                lastValidPresetId = savedItemId;
+                presetBox.setSelectedId(savedItemId, juce::dontSendNotification);
+            }
+        }
+    }
+    closeSavePresetDialog();
+}
+
+void FidiuCompressorEditor::stepPreset(int dir) {
+    if (selectablePresetIds.empty()) return;
+    auto it = std::find(selectablePresetIds.begin(), selectablePresetIds.end(), lastValidPresetId);
+    int pos = (it != selectablePresetIds.end())
+        ? static_cast<int>(std::distance(selectablePresetIds.begin(), it))
+        : 0;
+    const int n = static_cast<int>(selectablePresetIds.size());
+    const int nextPos = (pos + dir + n) % n;
+    const int nextId = selectablePresetIds[static_cast<size_t>(nextPos)];
+    presetBox.setSelectedId(nextId, juce::sendNotificationSync);
+}
+
+namespace {
+struct FidiuPresetDef {
+    int style, colorMode, os, chMode;
+    float thresh, ratio, knee, range, att, hold, rel;
+    bool autoRel, parallelOn, autoGain, laOn, scExt;
+    float charPct, mix, wetGain, dryGain, laMs, link;
+    bool hpfOn, lpfOn, eqOn;
+    float hpfFreq, lpfFreq, eqFreq, eqGain, eqQ;
+    int hpfSlope, lpfSlope, scMidSide;
+};
+
+static constexpr FidiuPresetDef kFactoryPresets[31] = {
+    { 0, 0, 0, 0,   0.0f,  1.0f,  0.0f,  0.0f, 10.0f,  0.0f, 100.0f, false, false, false, false, false,  0.0f, 100.0f, 0.0f, 0.0f,  0.0f, 100.0f, false, false, false,   20.0f, 20000.0f, 1000.0f, 0.0f, 1.0f, 1, 1, 0 },
+    { 5, 1, 1, 0, -18.0f,  4.0f, 12.0f, 36.0f, 12.0f,  8.0f, 140.0f, true,  false, false, true,  false, 24.0f, 100.0f, 2.4f, 0.0f,  4.0f, 100.0f, true,  false, false,   95.0f, 12000.0f, 2400.0f, 0.0f, 1.2f, 2, 1, 0 },
+    { 4, 3, 2, 0, -14.5f,  2.2f, 24.0f, 12.0f, 28.0f,  0.0f, 220.0f, true,  false, true,  true,  false, 14.0f, 100.0f, 1.5f, 0.0f,  2.5f,  90.0f, true,  false, false,   65.0f, 12000.0f, 2400.0f, 0.0f, 1.2f, 1, 1, 0 },
+    { 3, 2, 1, 0, -21.0f,  3.5f, 16.0f, 24.0f,  6.5f, 12.0f, 160.0f, true,  false, false, true,  false, 32.0f, 100.0f, 4.0f, 0.0f,  3.0f, 100.0f, true,  false, true,   130.0f, 12000.0f, 3200.0f, 3.5f, 1.4f, 2, 1, 0 },
+    { 6, 1, 2, 0, -26.0f, 10.0f,  6.0f, 42.0f, 18.0f, 15.0f,  85.0f, false, true,  false, false, false, 58.0f,  52.0f, 6.5f, 0.0f,  0.0f, 100.0f, true,  true,  false,  110.0f,  8500.0f, 2400.0f, 0.0f, 1.2f, 2, 1, 0 },
+    { 0, 0, 2, 0, -11.0f, 100.0f, 1.5f, 24.0f,  0.1f, 10.0f,  75.0f, false, false, false, true,  false,  8.0f, 100.0f, 3.0f, 0.0f, 10.0f, 100.0f, false, false, false,   30.0f, 12000.0f, 2400.0f, 0.0f, 1.2f, 1, 1, 0 },
+    { 7, 2, 1, 0, -24.0f,  8.0f,  8.0f, 30.0f,  1.5f, 25.0f, 175.0f, false, false, false, true,  true,  28.0f, 100.0f, 2.0f, 0.0f,  2.0f, 100.0f, true,  true,  false,   45.0f,   450.0f, 2400.0f, 0.0f, 1.2f, 1, 2, 0 },
+    { 5, 2, 1, 0, -16.5f,  2.5f, 18.0f, 18.0f, 18.0f,  4.0f, 180.0f, true,  false, false, true,  false, 34.0f, 100.0f, 1.8f, 0.0f,  2.0f, 100.0f, true,  false, false,   80.0f, 12000.0f, 2400.0f, 0.0f, 1.2f, 1, 1, 0 },
+    { 5, 3, 1, 2, -22.0f,  3.0f, 14.0f, 16.0f, 20.0f,  6.0f, 190.0f, true,  false, false, true,  false, 18.0f, 100.0f, 1.2f, 0.0f,  2.5f, 100.0f, true,  false, false,  140.0f, 12000.0f, 2400.0f, 0.0f, 1.2f, 2, 1, 0 },
+    { 4, 0, 2, 0, -12.5f,  2.0f, 20.0f,  8.0f, 35.0f,  0.0f, 210.0f, true,  false, true,  true,  false, 10.0f, 100.0f, 1.4f, 0.0f,  3.5f,  92.0f, true,  false, false,   55.0f, 12000.0f, 2400.0f, 0.0f, 1.2f, 1, 1, 0 },
+    { 4, 1, 2, 1, -15.5f,  1.8f, 16.0f, 10.0f, 25.0f,  2.0f, 185.0f, true,  false, true,  true,  false, 22.0f, 100.0f, 1.2f, 0.0f,  2.0f, 100.0f, true,  false, false,   70.0f, 12000.0f, 2400.0f, 0.0f, 1.2f, 1, 1, 0 },
+    { 6, 1, 1, 0, -20.0f,  5.5f,  6.0f, 28.0f, 22.0f, 12.0f,  70.0f, false, false, false, false, false, 36.0f, 100.0f, 3.2f, 0.0f,  0.0f, 100.0f, true,  true,  false,   45.0f,  3500.0f, 2400.0f, 0.0f, 1.2f, 1, 1, 0 },
+    { 1, 3, 1, 0, -19.0f,  6.5f,  4.0f, 32.0f, 15.0f,  8.0f,  85.0f, false, false, false, true,  false, 30.0f, 100.0f, 3.5f, 0.0f,  1.0f, 100.0f, true,  false, true,    35.0f, 12000.0f,   65.0f, 4.0f, 1.5f, 1, 1, 0 },
+    { 2, 1, 1, 0, -22.0f,  4.5f, 10.0f, 28.0f,  8.0f, 15.0f, 110.0f, false, false, false, true,  false, 34.0f, 100.0f, 3.8f, 0.0f,  2.0f, 100.0f, true,  true,  false,   32.0f,  1200.0f, 2400.0f, 0.0f, 1.2f, 1, 1, 0 },
+    { 6, 2, 2, 0, -25.0f,  8.0f,  8.0f, 36.0f, 12.0f, 10.0f,  90.0f, false, true,  false, false, false, 46.0f,  60.0f, 4.5f, 0.0f,  0.0f, 100.0f, true,  false, true,    75.0f, 12000.0f,  900.0f, 3.0f, 1.3f, 1, 1, 0 },
+    { 0, 2, 2, 0, -18.5f,  3.2f, 14.0f, 14.0f,  0.8f,  4.0f,  60.0f, false, false, false, true,  false, 16.0f, 100.0f, 1.5f, 0.0f,  1.5f, 100.0f, true,  false, true,  2800.0f, 12000.0f, 7500.0f, 4.5f, 1.8f, 2, 1, 0 },
+    { 2, 1, 1, 0, -19.5f,  3.5f, 14.0f, 20.0f, 14.0f,  6.0f, 150.0f, true,  false, false, true,  false, 26.0f, 100.0f, 2.5f, 0.0f,  2.0f, 100.0f, true,  false, false,  120.0f, 12000.0f, 2400.0f, 0.0f, 1.2f, 2, 1, 0 },
+    { 1, 3, 1, 0, -17.0f,  4.8f,  8.0f, 22.0f,  9.0f,  5.0f,  95.0f, false, false, false, true,  false, 30.0f, 100.0f, 2.0f, 0.0f,  1.5f, 100.0f, true,  true,  true,   140.0f,  5500.0f,  220.0f, 3.0f, 1.6f, 2, 1, 0 },
+    { 0, 0, 2, 0, -20.0f,  2.6f, 18.0f, 16.0f, 24.0f,  4.0f, 240.0f, true,  false, false, true,  false, 10.0f, 100.0f, 2.0f, 0.0f,  2.0f,  85.0f, true,  false, false,   75.0f, 12000.0f, 2400.0f, 0.0f, 1.2f, 1, 1, 0 },
+    { 2, 2, 1, 0, -21.0f,  3.0f, 20.0f, 18.0f, 16.0f,  8.0f, 280.0f, true,  false, false, true,  false, 30.0f, 100.0f, 2.2f, 0.0f,  3.0f,  75.0f, true,  false, false,  110.0f, 12000.0f, 2400.0f, 0.0f, 1.2f, 1, 1, 0 },
+    { 6, 3, 1, 0, -23.0f,  6.0f,  6.0f, 30.0f, 16.0f, 10.0f,  80.0f, false, true,  false, false, false, 36.0f,  65.0f, 4.0f, 0.0f,  0.0f, 100.0f, true,  false, true,   130.0f, 12000.0f, 2200.0f, 2.5f, 1.4f, 2, 1, 0 },
+    { 3, 1, 1, 0, -20.5f,  3.8f, 14.0f, 22.0f, 10.0f,  8.0f, 140.0f, true,  false, false, true,  false, 36.0f, 100.0f, 3.5f, 0.0f,  2.5f, 100.0f, true,  false, true,   110.0f, 12000.0f, 3400.0f, 2.5f, 1.3f, 2, 1, 0 },
+    { 3, 2, 2, 0, -25.0f,  7.0f,  8.0f, 32.0f,  4.0f, 10.0f,  95.0f, false, true,  false, true,  false, 30.0f,  48.0f, 5.0f, 0.0f,  2.0f, 100.0f, true,  false, true,   180.0f, 12000.0f, 4200.0f, 4.0f, 1.4f, 2, 1, 0 },
+    { 0, 0, 2, 0, -22.0f,  4.5f, 10.0f, 12.0f,  0.4f,  2.0f,  55.0f, false, false, false, true,  false,  6.0f, 100.0f, 0.8f, 0.0f,  1.5f, 100.0f, true,  false, true,  2800.0f, 12000.0f, 6800.0f, 5.0f, 2.2f, 2, 1, 0 },
+    { 4, 0, 2, 0, -24.0f,  1.6f, 28.0f,  8.0f, 35.0f,  0.0f, 320.0f, true,  false, true,  true,  false,  6.0f, 100.0f, 1.4f, 0.0f,  3.0f,  82.0f, true,  false, false,   45.0f, 12000.0f, 2400.0f, 0.0f, 1.2f, 1, 1, 0 },
+    { 2, 2, 2, 0, -23.0f,  2.2f, 22.0f, 14.0f, 22.0f,  6.0f, 290.0f, true,  false, false, true,  false, 18.0f, 100.0f, 2.0f, 0.0f,  2.5f,  78.0f, true,  false, false,   95.0f, 12000.0f, 2400.0f, 0.0f, 1.2f, 1, 1, 0 },
+    { 1, 3, 1, 0, -20.0f,  3.2f, 12.0f, 18.0f, 24.0f,  8.0f, 130.0f, true,  false, false, true,  false, 24.0f, 100.0f, 2.2f, 0.0f,  2.0f,  90.0f, true,  false, false,   60.0f, 12000.0f, 2400.0f, 0.0f, 1.2f, 1, 1, 0 },
+    { 7, 2, 1, 0, -16.0f,  7.5f,  8.0f, 30.0f,  2.0f, 18.0f, 145.0f, false, false, false, true,  false, 32.0f, 100.0f, 3.0f, 0.0f,  2.5f, 100.0f, true,  true,  false,   40.0f,   500.0f, 2400.0f, 0.0f, 1.2f, 1, 2, 0 },
+    { 6, 3, 1, 0, -15.5f,  6.5f,  6.0f, 28.0f, 14.0f, 10.0f,  72.0f, false, false, false, false, false, 48.0f, 100.0f, 2.8f, 0.0f,  0.0f, 100.0f, true,  false, true,    38.0f, 12000.0f,   85.0f, 3.5f, 1.4f, 1, 1, 0 },
+    { 1, 1, 1, 0, -17.5f,  5.0f, 10.0f, 26.0f, 18.0f, 12.0f, 105.0f, false, false, false, true,  false, 32.0f, 100.0f, 2.6f, 0.0f,  1.5f, 100.0f, true,  false, false,   90.0f, 12000.0f, 2400.0f, 0.0f, 1.2f, 2, 1, 0 },
+    { 7, 1, 1, 0, -16.5f,  4.2f, 12.0f, 20.0f, 10.0f,  6.0f, 118.0f, false, false, false, true,  false, 28.0f, 100.0f, 2.2f, 0.0f,  2.0f, 100.0f, true,  false, true,    68.0f, 12000.0f,  100.0f, 2.5f, 1.3f, 2, 1, 0 }
+};
+
+struct FidiuScPresetDef {
+    const char* nameEn;
+    const char* nameRo;
+    int scMidSide;
+    bool hpfOn;
+    float hpfFreq;
+    int hpfSlope;
+    bool lpfOn;
+    float lpfFreq;
+    int lpfSlope;
+    bool eqOn;
+    float eqFreq;
+    float eqGain;
+    float eqQ;
+};
+
+static constexpr FidiuScPresetDef kSidechainPresets[10] = {
+    { "SC: Flat (Bypass EQ)",        "SC: Plat (EQ Oprit)",            0, false,   20.0f, 1, false, 20000.0f, 1, false, 1000.0f,  0.0f, 1.0f },
+    { "SC: Kick (Sub & Click)",      "SC: Kick (Sub & Atac)",          1, true,    35.0f, 2, true,    420.0f, 2, true,    65.0f,  6.0f, 1.6f },
+    { "SC: Kick Filter (115Hz HPF)", "SC: Ignora Sub Kick (115Hz)",    0, true,   115.0f, 2, false, 14000.0f, 1, true,    60.0f, -6.0f, 1.2f },
+    { "SC: Snare (Body & Crack)",    "SC: Snare (Corp & Pocnet)",      1, true,   150.0f, 2, true,   4800.0f, 1, true,   210.0f,  5.5f, 1.8f },
+    { "SC: Snare Snap (2.5 kHz)",    "SC: Snare Snap (2.5 kHz)",       1, true,   180.0f, 2, true,   8500.0f, 1, true,  2500.0f,  6.5f, 2.0f },
+    { "SC: Vocal De-Ess (6.8 kHz)",  "SC: Voce De-Ess (6.8 kHz)",      1, true,  2800.0f, 2, true,  14000.0f, 1, true,  6800.0f,  8.0f, 2.8f },
+    { "SC: Bass Tight (Sub Ctrl)",   "SC: Bass Strans (Sub Control)",  1, true,    32.0f, 1, true,    950.0f, 2, true,    90.0f,  3.5f, 1.2f },
+    { "SC: Hats / Cymbal Tamer",     "SC: Hats / Taler Tamer",         0, true,  3600.0f, 2, false, 20000.0f, 1, true,  8500.0f,  5.0f, 1.6f },
+    { "SC: Mid Punch Detector",      "SC: Detector Mid (Centru)",      1, true,    85.0f, 2, false, 16000.0f, 1, true,  1800.0f,  2.5f, 1.1f },
+    { "SC: Side Width Detector",     "SC: Detector Side (Lateral)",    2, true,   140.0f, 2, true,  12000.0f, 1, true,  3500.0f,  3.0f, 1.2f }
+};
+} // namespace
+
+float FidiuCompressorEditor::computeCalibratedThreshold(int presetIdx, double avgRmsDb, double avgCrestDb, double targetGrDb) const {
+    const auto& pr = kFactoryPresets[std::clamp(presetIdx, 0, 30)];
+    const auto style = fidiu::getStyleProfile(static_cast<fidiu::CompressionStyle>(pr.style));
+    const double rmsBlend = static_cast<double>(style.rmsBlend);
+    const double detEstimateDb = avgRmsDb + (1.0 - rmsBlend) * std::min(std::max(avgCrestDb, 0.0), 16.0) * 0.65 + rmsBlend * 2.0;
+    const double effRatio = std::clamp(static_cast<double>(pr.ratio), 1.2, 20.0);
+    const double slope = std::max(0.22, 1.0 - 1.0 / effRatio);
+    const double kneeBoost = std::min(static_cast<double>(pr.knee), 28.0) * 0.08;
+    const double neededOverDb = targetGrDb / slope - kneeBoost;
+    const double rawThresh = detEstimateDb - neededOverDb;
+    const double snapped = std::round(rawThresh * 2.0) * 0.5;
+    return static_cast<float>(std::clamp(snapped, -52.0, -3.0));
+}
+
+void FidiuCompressorEditor::applyPreset(int idx, bool calibrateThreshold) {
+    const int safeIdx = std::clamp(idx, 0, 30);
+    const auto& pr = kFactoryPresets[safeIdx];
     auto setVal = [this](const juce::String& id, float v) {
         if (auto* param = audioProcessor.apvts.getParameter(id))
             param->setValueNotifyingHost(param->convertTo0to1(v));
     };
 
+    const float finalThresh = calibrateThreshold
+        ? computeCalibratedThreshold(safeIdx, lastAvgRmsDb, lastAvgCrestDb, lastTargetGrDb)
+        : pr.thresh;
+
     setChoiceParam("style", pr.style);
     setChoiceParam("colorMode", pr.colorMode);
     setChoiceParam("oversampling", pr.os);
     setChoiceParam("channelMode", pr.chMode);
-    setVal("threshold", pr.thresh);
+    setVal("threshold", finalThresh);
     setVal("ratio", pr.ratio);
     setVal("knee", pr.knee);
     setVal("range", pr.range);
@@ -853,6 +1114,7 @@ void FidiuCompressorEditor::applyPreset(int idx) {
     setVal("stereoLink", pr.link);
     setVal("msBalance", 0.0f);
     setVal("scExt", pr.scExt ? 1.0f : 0.0f);
+    setChoiceParam("scMidSide", pr.scMidSide);
     setVal("scHpfOn", pr.hpfOn ? 1.0f : 0.0f);
     setVal("scHpfFreq", pr.hpfFreq);
     setChoiceParam("scHpfSlope", pr.hpfSlope);
@@ -863,6 +1125,70 @@ void FidiuCompressorEditor::applyPreset(int idx) {
     setVal("scEqFreq", pr.eqFreq);
     setVal("scEqGain", pr.eqGain);
     setVal("scEqQ", pr.eqQ);
+}
+
+void FidiuCompressorEditor::applySidechainPreset(int scIdx) {
+    const int safeIdx = std::clamp(scIdx, 0, 9);
+    const auto& sc = kSidechainPresets[safeIdx];
+    auto setVal = [this](const juce::String& id, float v) {
+        if (auto* param = audioProcessor.apvts.getParameter(id)) {
+            param->beginChangeGesture();
+            param->setValueNotifyingHost(param->convertTo0to1(v));
+            param->endChangeGesture();
+        }
+    };
+    setChoiceParam("scMidSide", sc.scMidSide);
+    setVal("scHpfOn", sc.hpfOn ? 1.0f : 0.0f);
+    setVal("scHpfFreq", sc.hpfFreq);
+    setChoiceParam("scHpfSlope", sc.hpfSlope);
+    setVal("scLpfOn", sc.lpfOn ? 1.0f : 0.0f);
+    setVal("scLpfFreq", sc.lpfFreq);
+    setChoiceParam("scLpfSlope", sc.lpfSlope);
+    setVal("scEqOn", sc.eqOn ? 1.0f : 0.0f);
+    setVal("scEqFreq", sc.eqFreq);
+    setVal("scEqGain", sc.eqGain);
+    setVal("scEqQ", sc.eqQ);
+    updateButtonStates();
+    repaint();
+}
+
+void FidiuCompressorEditor::rebuildScPresetMenu() {
+    const bool isRo = audioProcessor.uiLanguage.load(std::memory_order_relaxed) == 1;
+    scPresetBox.clear(juce::dontSendNotification);
+    for (int i = 0; i < 10; ++i) {
+        scPresetBox.addItem(juce::String::fromUTF8(isRo ? kSidechainPresets[i].nameRo : kSidechainPresets[i].nameEn), i + 1);
+    }
+    scPresetBox.setTextWhenNothingSelected(isRo ? juce::String::fromUTF8("SC: EQ Personalizat") : juce::String("SC: Custom EQ"));
+}
+
+void FidiuCompressorEditor::syncSidechainPresetBox() {
+    const int scMs = getChoiceParam("scMidSide");
+    const bool hpfOn = audioProcessor.apvts.getRawParameterValue("scHpfOn")->load() > 0.5f;
+    const float hpfF = audioProcessor.apvts.getRawParameterValue("scHpfFreq")->load();
+    const int hpfS = getChoiceParam("scHpfSlope");
+    const bool lpfOn = audioProcessor.apvts.getRawParameterValue("scLpfOn")->load() > 0.5f;
+    const float lpfF = audioProcessor.apvts.getRawParameterValue("scLpfFreq")->load();
+    const int lpfS = getChoiceParam("scLpfSlope");
+    const bool eqOn = audioProcessor.apvts.getRawParameterValue("scEqOn")->load() > 0.5f;
+    const float eqF = audioProcessor.apvts.getRawParameterValue("scEqFreq")->load();
+    const float eqG = audioProcessor.apvts.getRawParameterValue("scEqGain")->load();
+    const float eqQ = audioProcessor.apvts.getRawParameterValue("scEqQ")->load();
+
+    int matchedId = 0;
+    for (int i = 0; i < 10; ++i) {
+        const auto& sc = kSidechainPresets[i];
+        if (sc.scMidSide == scMs &&
+            sc.hpfOn == hpfOn && std::abs(sc.hpfFreq - hpfF) < 1.5f && sc.hpfSlope == hpfS &&
+            sc.lpfOn == lpfOn && std::abs(sc.lpfFreq - lpfF) < 2.0f && sc.lpfSlope == lpfS &&
+            sc.eqOn == eqOn && std::abs(sc.eqFreq - eqF) < 2.0f &&
+            std::abs(sc.eqGain - eqG) < 0.08f && std::abs(sc.eqQ - eqQ) < 0.08f) {
+            matchedId = i + 1;
+            break;
+        }
+    }
+    if (scPresetBox.getSelectedId() != matchedId) {
+        scPresetBox.setSelectedId(matchedId, juce::dontSendNotification);
+    }
 }
 
 void FidiuCompressorEditor::updateButtonStates() {
@@ -891,6 +1217,10 @@ void FidiuCompressorEditor::updateButtonStates() {
         chModeBtns[static_cast<size_t>(i)].setToggleState(i == activeCh, juce::dontSendNotification);
     msSlider.setEnabled(activeCh == 0);
 
+    const int activeScMs = getChoiceParam("scMidSide");
+    for (int i = 0; i < 3; ++i)
+        scMsBtns[static_cast<size_t>(i)].setToggleState(i == activeScMs, juce::dontSendNotification);
+
     const int activeHpfSlope = getChoiceParam("scHpfSlope");
     const int activeLpfSlope = getChoiceParam("scLpfSlope");
     for (int i = 0; i < 4; ++i) {
@@ -909,6 +1239,7 @@ void FidiuCompressorEditor::updateButtonStates() {
     scEqFreqSlider.setEnabled(eqOn);
     scEqGainSlider.setEnabled(eqOn);
     scEqQSlider.setEnabled(eqOn);
+    syncSidechainPresetBox();
 
     const int lang = std::clamp(audioProcessor.uiLanguage.load(std::memory_order_relaxed), 0, 1);
     if (lang != lastAppliedLang)
@@ -918,13 +1249,25 @@ void FidiuCompressorEditor::updateButtonStates() {
 void FidiuCompressorEditor::startSignalAnalysis() {
     if (isAnalyzing) return;
     isAnalyzing = true;
-    analyzeFramesLeft = 36;
+    hasValidAnalysis = false;
+    analyzeFramesLeft = 48;
     analyzeActiveFrames = 0;
+    ultraSubAccum = 0.0;
+    presenceAccum = 0.0;
+    airAccum = 0.0;
     bandAccum.fill(0.0);
     centroidNumer = 0.0;
     centroidDenom = 0.0;
+    rmsAccum = 0.0;
     crestAccum = 0.0;
     sideAccum = 0.0;
+    rmsMin = 0.0;
+    rmsMax = -96.0;
+    prevFrameBands.fill(0.0);
+    hasPrevFrameBands = false;
+    fluxAccum = 0.0;
+    fluxCount = 0;
+    frameSubRatios.clear();
     analyzeBtn.setButtonText("Analyzing...");
     analyzeBtn.setToggleState(true, juce::dontSendNotification);
 }
@@ -947,8 +1290,15 @@ void FidiuCompressorEditor::sampleAnalysisFrame() {
 
     if (rmsDb > -60.0f) {
         ++analyzeActiveFrames;
+        const double rmsD = static_cast<double>(rmsDb);
+        rmsAccum += rmsD;
+        if (analyzeActiveFrames == 1 || rmsD < rmsMin) rmsMin = rmsD;
+        if (analyzeActiveFrames == 1 || rmsD > rmsMax) rmsMax = rmsD;
         crestAccum += static_cast<double>(crestDb);
         sideAccum += static_cast<double>(sideRatio);
+
+        std::array<double, 5> fBands {};
+        double fTotal = 0.0;
         for (int b = 1; b < 2048; ++b) {
             const double freq = static_cast<double>(b) * binHz;
             if (freq < 20.0 || freq > 18000.0) continue;
@@ -956,11 +1306,35 @@ void FidiuCompressorEditor::sampleAnalysisFrame() {
             const double pwr = mag * mag;
             centroidDenom += pwr;
             centroidNumer += pwr * freq;
-            if (freq < 85.0) bandAccum[0] += pwr;
-            else if (freq < 220.0) bandAccum[1] += pwr;
-            else if (freq < 800.0) bandAccum[2] += pwr;
-            else if (freq < 4500.0) bandAccum[3] += pwr;
-            else bandAccum[4] += pwr;
+            fTotal += pwr;
+
+            if (freq < 55.0) ultraSubAccum += pwr;
+            if (freq < 85.0) { bandAccum[0] += pwr; fBands[0] += pwr; }
+            else if (freq < 220.0) { bandAccum[1] += pwr; fBands[1] += pwr; }
+            else if (freq < 800.0) { bandAccum[2] += pwr; fBands[2] += pwr; }
+            else if (freq < 4500.0) {
+                bandAccum[3] += pwr;
+                fBands[3] += pwr;
+                if (freq >= 1800.0) presenceAccum += pwr;
+            } else {
+                bandAccum[4] += pwr;
+                fBands[4] += pwr;
+                if (freq >= 6500.0) airAccum += pwr;
+            }
+        }
+
+        if (fTotal > 1e-12) {
+            std::array<double, 5> normVec {};
+            for (size_t i = 0; i < 5; ++i) normVec[i] = fBands[i] / fTotal;
+            frameSubRatios.push_back(normVec[0] + normVec[1]);
+            if (hasPrevFrameBands) {
+                double diff = 0.0;
+                for (size_t i = 0; i < 5; ++i) diff += std::abs(normVec[i] - prevFrameBands[i]);
+                fluxAccum += diff;
+                ++fluxCount;
+            }
+            prevFrameBands = normVec;
+            hasPrevFrameBands = true;
         }
     }
 
@@ -973,75 +1347,185 @@ void FidiuCompressorEditor::finalizeSignalAnalysis() {
     isAnalyzing = false;
     analyzeBtn.setButtonText("Analyze Signal");
     analyzeBtn.setToggleState(false, juce::dontSendNotification);
+    const bool isRo = audioProcessor.uiLanguage.load(std::memory_order_relaxed) == 1;
 
     if (analyzeActiveFrames == 0 || centroidDenom < 1e-12) {
-        analyzedTitle = "No Input Signal";
-        analyzedSub = "Play audio through Fidiu Compressor and click Analyze Signal.";
-        sugPresetIndices = { 0, 1, 3 };
+        hasValidAnalysis = false;
+        analyzedTitle = isRo ? juce::String::fromUTF8("Lipsă Semnal Intrare") : juce::String("No Input Signal");
+        analyzedSub = isRo
+            ? juce::String::fromUTF8("Redă audio prin Fidiu Compressor și apasă Analyze Signal.")
+            : juce::String("Play audio through Fidiu Compressor and click Analyze Signal.");
+        sugPresetIndices = { 1, 2, 4 };
     } else {
+        auto clamp01 = [](double v) { return std::clamp(v, 0.0, 1.0); };
+        auto gaussScore = [](double val, double center, double width) {
+            const double d = (val - center) / std::max(width, 1e-4);
+            return std::exp(-0.5 * d * d);
+        };
+
         const double invE = 1.0 / centroidDenom;
+        const double ultraSubPct = ultraSubAccum * invE;
         const double subPct = bandAccum[0] * invE;
         const double bassPct = bandAccum[1] * invE;
         const double lowMidPct = bandAccum[2] * invE;
         const double highMidPct = bandAccum[3] * invE;
+        const double presencePct = presenceAccum * invE;
         const double highPct = bandAccum[4] * invE;
+        const double airPct = airAccum * invE;
+
         const double lowPct = subPct + bassPct;
         const double midPct = lowMidPct + highMidPct;
+        const double avgRmsDb = rmsAccum / static_cast<double>(analyzeActiveFrames);
         const double avgCrest = crestAccum / static_cast<double>(analyzeActiveFrames);
         const double avgSide = sideAccum / static_cast<double>(analyzeActiveFrames);
         const double centroidHz = centroidNumer * invE;
+        const double rmsSpreadDb = std::max(0.0, rmsMax - rmsMin);
+        const double spectralFlux = fluxCount > 0 ? (fluxAccum / static_cast<double>(fluxCount)) : 0.10;
 
-        if (lowPct > 0.60 && subPct > 0.22 && avgCrest >= 11.2 && avgSide < 0.30) {
-            analyzedTitle = "Kick / Sub Punch";
-            analyzedSub = "Sub-heavy transient punch | Crest " + juce::String(avgCrest, 1) + " dB";
-            sugPresetIndices = { 10, 11, 3 };
-        } else if (lowPct > 0.54 && avgCrest < 11.2 && highPct < 0.10 && avgSide < 0.32) {
-            analyzedTitle = "Bass / Sub Bass";
-            analyzedSub = "Sustained low-end | Crest " + juce::String(avgCrest, 1) + " dB";
-            sugPresetIndices = { 12, 13, 0 };
-        } else if (highPct > 0.36 || (centroidHz > 3600.0 && lowPct < 0.16)) {
-            analyzedTitle = "Hats / High Percussion";
-            analyzedSub = "Bright high transients | " + juce::String(centroidHz / 1000.0, 1) + " kHz centroid";
-            sugPresetIndices = { 14, 4, 3 };
-        } else if (avgSide > 0.46 && avgCrest < 11.0 && midPct > 0.35) {
-            analyzedTitle = "Synths / Wide Stereo Pad";
-            analyzedSub = "Wide stereo field (" + juce::String(static_cast<int>(std::round(avgSide * 100.0))) + "% Side)";
-            sugPresetIndices = { 18, 7, 19 };
-        } else if (highMidPct > 0.28 && midPct > 0.56 && avgSide < 0.36 && subPct < 0.14) {
-            if (avgCrest >= 12.2 && highPct > 0.10) {
-                analyzedTitle = "Piano / Acoustic Keys";
-                analyzedSub = "Dynamic midrange expression | Crest " + juce::String(avgCrest, 1) + " dB";
-                sugPresetIndices = { 17, 15, 1 };
-            } else if (avgCrest < 10.6 && lowMidPct > 0.24) {
-                analyzedTitle = "Electric Guitar / Crunch";
-                analyzedSub = "Dense midrange harmonics | " + juce::String(static_cast<int>(std::round(centroidHz))) + " Hz";
-                sugPresetIndices = { 16, 15, 6 };
-            } else {
-                analyzedTitle = "Vocal / Lead Presence";
-                analyzedSub = "Presence-centered mid | Crest " + juce::String(avgCrest, 1) + " dB";
-                sugPresetIndices = { 2, 9, 15 };
-            }
-        } else if (highMidPct > 0.25 && avgCrest >= 11.2 && subPct < 0.22) {
-            analyzedTitle = avgSide >= 0.26 ? juce::String("Synths / Transient Pluck") : juce::String("Acoustic Guitar / Pluck");
-            analyzedSub = "Snappy mid-high transients | Crest " + juce::String(avgCrest, 1) + " dB";
-            sugPresetIndices = avgSide >= 0.26 ? std::array<int, 3>{ 19, 15, 18 } : std::array<int, 3>{ 15, 19, 17 };
-        } else if (avgCrest >= 11.8 && lowPct > 0.22 && (highMidPct + highPct) > 0.18) {
-            analyzedTitle = "Drum Bus / Rhythm Mix";
-            analyzedSub = "Wideband transients + sub weight | Crest " + juce::String(avgCrest, 1) + " dB";
-            sugPresetIndices = { 3, 0, 6 };
-        } else if (avgCrest < 9.2 && lowPct > 0.16 && (highMidPct + highPct) > 0.16) {
-            analyzedTitle = "Mastering / Full-Range";
-            analyzedSub = "Dense balanced spectrum | Crest " + juce::String(avgCrest, 1) + " dB";
-            sugPresetIndices = { 1, 8, 9 };
-        } else {
-            analyzedTitle = "Full Mix Bus";
-            analyzedSub = "Balanced spectrum | Crest " + juce::String(avgCrest, 1) + " dB";
-            sugPresetIndices = avgSide > 0.36 ? std::array<int, 3>{ 0, 7, 6 } : std::array<int, 3>{ 0, 6, 1 };
+        double subMean = 0.0;
+        for (double s : frameSubRatios) subMean += s;
+        subMean /= static_cast<double>(std::max<size_t>(1, frameSubRatios.size()));
+        double subVar = 0.0;
+        for (double s : frameSubRatios) subVar += (s - subMean) * (s - subMean);
+        const double subPulseCV = subMean > 1e-4
+            ? std::sqrt(subVar / static_cast<double>(std::max<size_t>(1, frameSubRatios.size()))) / subMean
+            : 0.0;
+
+        const std::array<double, 5> b5 = { subPct, bassPct, lowMidPct, highMidPct, highPct };
+        double entropy = 0.0;
+        for (double p : b5) {
+            if (p > 1e-5) entropy -= p * std::log2(p);
         }
+        const double broadbandEvenness = entropy / std::log2(5.0);
+
+        struct Candidate {
+            juce::String titleEn;
+            juce::String titleRo;
+            double score;
+            double targetGr;
+            std::array<int, 3> ids;
+        };
+
+        std::array<Candidate, 12> cands {{
+            {
+                "Trap (808 & Hi-Hats)", "Trap (808 & Hi-Hats)",
+                clamp01((subPct - 0.20) / 0.22) * 2.1 + clamp01((ultraSubPct - 0.10) / 0.16) * 1.4
+                    + clamp01((highPct - 0.08) / 0.16) * 1.1 + clamp01((0.38 - lowMidPct) / 0.22) * 0.9
+                    + clamp01((rmsSpreadDb - 2.0) / 6.0) * 0.8 + (subPct > bassPct * 1.05 ? 0.7 : 0.0),
+                4.5, { 29, 13, 4 }
+            },
+            {
+                "Techno (Club / Industrial)", "Techno (Club / Industrial)",
+                clamp01((lowPct - 0.34) / 0.26) * 1.8 + clamp01((subPct - 0.16) / 0.18) * 1.1
+                    + gaussScore(avgCrest, 9.0, 2.5) * 1.3 + clamp01((subPulseCV - 0.08) / 0.22) * 1.1
+                    + clamp01((0.22 - airPct) / 0.16) * 0.8 + clamp01((0.36 - avgSide) / 0.22) * 0.6,
+                4.8, { 28, 12, 27 }
+            },
+            {
+                "House (Groovy 4/4)", "House (Groove 4/4)",
+                gaussScore(lowPct, 0.38, 0.14) * 1.5 + clamp01((highPct - 0.10) / 0.18) * 1.1
+                    + gaussScore(midPct, 0.42, 0.16) * 1.0 + gaussScore(avgCrest, 9.8, 2.3) * 1.2
+                    + clamp01((subPulseCV - 0.06) / 0.20) * 1.0 + gaussScore(avgSide, 0.32, 0.14) * 0.8,
+                4.0, { 30, 27, 7 }
+            },
+            {
+                "EDM (Electronic / Big Room)", "EDM (Electronic / Big Room)",
+                clamp01((11.0 - avgCrest) / 4.2) * 1.7 + clamp01((highMidPct + highPct - 0.30) / 0.28) * 1.4
+                    + clamp01((lowPct - 0.22) / 0.22) * 1.0 + clamp01((avgSide - 0.25) / 0.22) * 1.2
+                    + clamp01((avgRmsDb + 16.0) / 8.0) * 0.8,
+                4.5, { 27, 6, 9 }
+            },
+            {
+                "Drums / Percussion Bus", "Drums / Tobe",
+                clamp01((avgCrest - 11.4) / 4.0) * 1.9 + clamp01((spectralFlux - 0.14) / 0.20) * 1.4
+                    + clamp01((lowPct - 0.16) / 0.28) * 0.9 + clamp01((highPct - 0.10) / 0.22) * 1.0
+                    + clamp01((rmsSpreadDb - 2.5) / 6.0) * 0.9,
+                6.5,
+                highPct > 0.34 ? std::array<int, 3>{ 15, 4, 5 }
+                               : (lowPct > 0.56 ? std::array<int, 3>{ 11, 12, 4 } : std::array<int, 3>{ 4, 11, 1 })
+            },
+            {
+                "Bass / Sub Bass", "Bass / Sub Bass",
+                clamp01((lowPct - 0.50) / 0.26) * 2.4 + clamp01((0.12 - highPct) / 0.10) * 1.4
+                    + clamp01((0.32 - avgSide) / 0.22) * 1.0 + clamp01((12.0 - avgCrest) / 4.5) * 0.8
+                    + clamp01((0.15 - subPulseCV) / 0.15) * 0.5,
+                5.0, { 13, 14, 29 }
+            },
+            {
+                "Classical / Orchestra", juce::String::fromUTF8("Muzică Clasică / Orchestră"),
+                clamp01((avgCrest - 12.6) / 4.5) * 2.0 + clamp01((midPct - 0.48) / 0.28) * 1.2
+                    + clamp01((lowMidPct - 0.20) / 0.20) * 1.0 + clamp01((0.14 - subPct) / 0.12) * 1.1
+                    + gaussScore(centroidHz, 1250.0, 750.0) * 0.9 + clamp01((0.24 - spectralFlux) / 0.18) * 0.8,
+                2.2, { 24, 25, 26 }
+            },
+            {
+                "Pads / Atmospheric Synths", "Pads / Synths",
+                clamp01((avgSide - 0.36) / 0.24) * 2.1 + clamp01((3.8 - rmsSpreadDb) / 3.2) * 1.3
+                    + clamp01((0.18 - spectralFlux) / 0.14) * 1.2 + clamp01((midPct - 0.34) / 0.28) * 0.9
+                    + clamp01((0.16 - subPct) / 0.14) * 0.7,
+                3.5, { 19, 8, 20 }
+            },
+            {
+                "Piano / Acoustic Keys", "Pian / Clape Acustice",
+                clamp01((avgCrest - 11.4) / 3.8) * 1.6 + clamp01((midPct - 0.56) / 0.24) * 1.5
+                    + gaussScore(centroidHz, 1350.0, 650.0) * 1.1 + clamp01((0.13 - subPct) / 0.11) * 1.0
+                    + clamp01((0.36 - avgSide) / 0.20) * 0.7 + clamp01((spectralFlux - 0.09) / 0.16) * 0.6,
+                3.2, { 18, 25, 16 }
+            },
+            {
+                "Guitar (Acoustic / Electric)", juce::String::fromUTF8("Chitară (Acustică / Electrică)"),
+                clamp01((midPct - 0.54) / 0.26) * 1.4 + clamp01((highMidPct - 0.24) / 0.20) * 1.1
+                    + clamp01((lowMidPct - 0.18) / 0.18) * 0.9 + clamp01((0.13 - subPct) / 0.11) * 1.0
+                    + gaussScore(centroidHz, 1750.0, 850.0) * 0.9 + (avgCrest < 11.0 ? 0.7 : 0.4),
+                4.2, avgCrest < 10.8 ? std::array<int, 3>{ 17, 16, 7 } : std::array<int, 3>{ 16, 17, 18 }
+            },
+            {
+                "Vocals / Lead Voice", "Voce / Lead Vocal",
+                clamp01((presencePct + highMidPct * 0.5 - 0.30) / 0.28) * 1.9 + clamp01((0.28 - avgSide) / 0.20) * 1.5
+                    + clamp01((0.10 - subPct) / 0.09) * 1.2 + gaussScore(centroidHz, 2100.0, 900.0) * 1.0
+                    + clamp01((0.24 - highPct) / 0.18) * 0.6,
+                4.5, airPct > 0.14 ? std::array<int, 3>{ 3, 23, 21 } : std::array<int, 3>{ 3, 21, 22 }
+            },
+            {
+                avgCrest < 9.2 ? "Full Mix / Mastering" : "Full Mix Bus",
+                avgCrest < 9.2 ? juce::String::fromUTF8("Mix Întreg / Mastering") : juce::String::fromUTF8("Mix Întreg (Mix Bus)"),
+                broadbandEvenness * 2.4 + gaussScore(avgCrest, 10.5, 3.0) * 1.2
+                    + gaussScore(avgSide, 0.30, 0.16) * 0.9 + clamp01((lowPct - 0.14) / 0.20) * 0.5
+                    + clamp01((highMidPct + highPct - 0.18) / 0.20) * 0.5,
+                avgCrest < 9.2 ? 2.5 : 3.5,
+                avgCrest < 9.2 ? std::array<int, 3>{ 2, 9, 1 }
+                               : (avgSide > 0.36 ? std::array<int, 3>{ 1, 8, 7 } : std::array<int, 3>{ 1, 7, 2 })
+            }
+        }};
+
+        size_t bestIdx = 0;
+        for (size_t i = 1; i < cands.size(); ++i) {
+            if (cands[i].score > cands[bestIdx].score)
+                bestIdx = i;
+        }
+        const auto& winner = cands[bestIdx];
+
+        hasValidAnalysis = true;
+        lastAvgRmsDb = avgRmsDb;
+        lastAvgCrestDb = avgCrest;
+        lastTargetGrDb = winner.targetGr;
+        sugPresetIndices = winner.ids;
+
+        const float autoThresh = computeCalibratedThreshold(winner.ids[0], avgRmsDb, avgCrest, winner.targetGr);
+        if (auto* tParam = audioProcessor.apvts.getParameter("threshold")) {
+            tParam->beginChangeGesture();
+            tParam->setValueNotifyingHost(tParam->convertTo0to1(autoThresh));
+            tParam->endChangeGesture();
+        }
+
+        analyzedTitle = isRo ? winner.titleRo : winner.titleEn;
+        analyzedSub = (isRo ? juce::String("Auto Threshold: ") : juce::String("Auto Threshold: "))
+                    + juce::String(autoThresh, 1) + " dB | RMS " + juce::String(avgRmsDb, 1)
+                    + " | Crest " + juce::String(avgCrest, 1) + " dB";
     }
 
     for (size_t i = 0; i < 3; ++i) {
-        const int itemId = std::clamp(sugPresetIndices[i], 0, 19) + 1;
+        const int itemId = std::clamp(sugPresetIndices[i], 0, 30) + 1;
         sugPresetBtns[i].setButtonText(presetBox.getItemText(presetBox.indexOfItemId(itemId)));
         sugPresetBtns[i].setVisible(true);
     }
@@ -1520,10 +2004,10 @@ void FidiuCompressorEditor::paint(juce::Graphics& g) {
 
         g.setColour(kCyan);
         g.setFont(juce::FontOptions(11.5f, juce::Font::bold));
-        g.drawText(analyzedTitle, suggestionBounds.getX() + 10, suggestionBounds.getY() + 5, 190, 16, juce::Justification::left, false);
+        g.drawText(analyzedTitle, suggestionBounds.getX() + 10, suggestionBounds.getY() + 5, 215, 16, juce::Justification::left, false);
         g.setColour(kMutedText);
         g.setFont(juce::FontOptions(10.5f));
-        g.drawText(analyzedSub, suggestionBounds.getX() + 196, suggestionBounds.getY() + 5, suggestionBounds.getWidth() - 230, 16, juce::Justification::left, false);
+        g.drawText(analyzedSub, suggestionBounds.getX() + 228, suggestionBounds.getY() + 5, suggestionBounds.getWidth() - 260, 16, juce::Justification::left, false);
     }
 
     paintMeters(g, metersBounds.toFloat());
@@ -1610,13 +2094,14 @@ void FidiuCompressorEditor::resized() {
     consoleBounds = { 0, topH + dispH, w, conH };
     scRailBounds  = { 0, topH + dispH + conH, w, railH };
 
-    // Floating Display Mode Buttons
+    // Floating Display Mode Buttons & Sidechain Preset Selector
     dispModeBtn.setBounds(50, topH + 8, 66, 22);
     scModeBtn.setBounds(118, topH + 8, 98, 22);
     kneeToggleBtn.setBounds(220, topH + 8, 52, 22);
+    scPresetBox.setBounds(displayMode == DisplayMode::Dynamics ? 278 : 222, topH + 8, 174, 22);
 
     // Signal Suggestion Strip (top-right inside display, below LA/GR readout)
-    const int sugW = std::min(510, displayBounds.getWidth() - 60);
+    const int sugW = std::min(560, displayBounds.getWidth() - 40);
     suggestionBounds = { displayBounds.getRight() - sugW - 14, topH + 34, sugW, 56 };
     const int btnW = (sugW - 46) / 3;
     for (int i = 0; i < 3; ++i)
@@ -1677,10 +2162,13 @@ void FidiuCompressorEditor::resized() {
     railDividers[0] = rx + 6 + extraGap / 2;
     rx += 12 + extraGap;
 
-    // Sidechain routing
-    scIntBtn.setBounds(rx, ry + 2, 47, 20);
-    scExtBtn.setBounds(rx + 49, ry + 2, 47, 20);
-    scAudBtn.setBounds(rx, ry + 28, 96, 20);
+    // Sidechain routing (Int/Ext + SC Stereo/Mid/Side + Audition)
+    scIntBtn.setBounds(rx, ry + 1, 47, 19);
+    scExtBtn.setBounds(rx + 49, ry + 1, 47, 19);
+    scMsBtns[0].setBounds(rx, ry + 24, 31, 19);
+    scMsBtns[1].setBounds(rx + 32, ry + 24, 32, 19);
+    scMsBtns[2].setBounds(rx + 65, ry + 24, 31, 19);
+    scAudBtn.setBounds(rx, ry + 48, 96, 20);
     rx += 98;
     railDividers[1] = rx + 6 + extraGap / 2;
     rx += 12 + extraGap;
@@ -1708,6 +2196,8 @@ void FidiuCompressorEditor::resized() {
     scEqFreqSlider.setBounds(rx, ry, 52, 74); rx += 54;
     scEqGainSlider.setBounds(rx, ry, 52, 74); rx += 54;
     scEqQSlider.setBounds(rx, ry, 52, 74);
+
+    savePresetOverlay.setBounds(getLocalBounds());
 }
 
 void FidiuCompressorEditor::mouseDown(const juce::MouseEvent& e) {

@@ -1,5 +1,7 @@
 #pragma once
 #include <juce_gui_basics/juce_gui_basics.h>
+#include <functional>
+#include <vector>
 #include "PluginProcessor.h"
 
 class FidiuLookAndFeel : public juce::LookAndFeel_V4 {
@@ -31,7 +33,16 @@ private:
     void timerCallback() override;
     void setChoiceParam(const juce::String& paramId, int index);
     int getChoiceParam(const juce::String& paramId) const;
-    void applyPreset(int index);
+    void applyPreset(int index, bool calibrateThreshold = false);
+    void applySidechainPreset(int scIdx);
+    void rebuildScPresetMenu();
+    void syncSidechainPresetBox();
+    float computeCalibratedThreshold(int presetIdx, double avgRmsDb, double avgCrestDb, double targetGrDb) const;
+    void rebuildPresetMenu(int selectItemId = -1);
+    void openSavePresetDialog();
+    void closeSavePresetDialog();
+    void commitSavePreset();
+    juce::File getUserPresetsDirectory() const;
     void stepPreset(int dir);
     void startSignalAnalysis();
     void sampleAnalysisFrame();
@@ -56,13 +67,27 @@ private:
 
     bool isAnalyzing = false;
     bool hasSuggestion = false;
+    bool hasValidAnalysis = false;
     int analyzeFramesLeft = 0;
     int analyzeActiveFrames = 0;
+    double ultraSubAccum = 0.0, presenceAccum = 0.0, airAccum = 0.0;
     std::array<double, 5> bandAccum {};
     double centroidNumer = 0.0, centroidDenom = 0.0;
-    double crestAccum = 0.0, sideAccum = 0.0;
+    double rmsAccum = 0.0, crestAccum = 0.0, sideAccum = 0.0;
+    double rmsMin = 0.0, rmsMax = -96.0;
+    std::array<double, 5> prevFrameBands {};
+    bool hasPrevFrameBands = false;
+    double fluxAccum = 0.0;
+    int fluxCount = 0;
+    std::vector<double> frameSubRatios;
+    double lastAvgRmsDb = -18.0, lastAvgCrestDb = 10.0, lastTargetGrDb = 3.5;
     juce::String analyzedTitle, analyzedSub;
-    std::array<int, 3> sugPresetIndices { 0, 1, 3 };
+    std::array<int, 3> sugPresetIndices { 1, 2, 4 };
+    static constexpr int kSavePresetMenuId = 9001;
+    static constexpr int kUserPresetIdBase = 1000;
+    int lastValidPresetId = 1;
+    std::vector<int> selectablePresetIds;
+    std::vector<juce::File> userPresetFiles;
 
     juce::Rectangle<int> displayBounds;
     juce::Rectangle<int> metersBounds;
@@ -90,10 +115,11 @@ private:
     std::array<juce::TextButton, 3> sugPresetBtns;
     juce::TextButton sugCloseBtn { "x" };
 
-    // Display mode buttons
+    // Display mode buttons & Sidechain preset selector
     juce::TextButton dispModeBtn { "Display" };
     juce::TextButton scModeBtn { "Sidechain EQ" };
     juce::TextButton kneeToggleBtn { "Knee" };
+    juce::ComboBox scPresetBox;
 
     // Style & Coloriture buttons
     std::array<juce::TextButton, 8> styleBtns;
@@ -102,6 +128,7 @@ private:
     // Oversampling, Channel Mode & Slope & Sidechain buttons
     std::array<juce::TextButton, 3> osBtns;
     std::array<juce::TextButton, 3> chModeBtns;
+    std::array<juce::TextButton, 3> scMsBtns;
     std::array<juce::TextButton, 4> hpfSlopeBtns;
     std::array<juce::TextButton, 4> lpfSlopeBtns;
 
@@ -140,6 +167,76 @@ private:
     std::array<float, 2048> smoothedBins {};
 
     juce::TooltipWindow tooltipWindow { this, 3000 };
+
+    struct SavePresetOverlay : public juce::Component {
+        std::function<void()> onConfirm;
+        std::function<void()> onCancel;
+        bool isRomanian = false;
+        juce::TextEditor nameEditor;
+        juce::TextButton saveBtn { "Save" };
+        juce::TextButton cancelBtn { "Cancel" };
+
+        SavePresetOverlay() {
+            nameEditor.setMultiLine(false);
+            nameEditor.setReturnKeyStartsNewLine(false);
+            nameEditor.setColour(juce::TextEditor::backgroundColourId, juce::Colour(0xff0e1117));
+            nameEditor.setColour(juce::TextEditor::textColourId, juce::Colours::white);
+            nameEditor.setColour(juce::TextEditor::outlineColourId, juce::Colour(0xff2d3340));
+            nameEditor.setColour(juce::TextEditor::focusedOutlineColourId, juce::Colour(0xff38d4ff));
+            nameEditor.setFont(juce::FontOptions(13.5f));
+            nameEditor.onReturnKey = [this] { if (onConfirm) onConfirm(); };
+            nameEditor.onEscapeKey = [this] { if (onCancel) onCancel(); };
+            addAndMakeVisible(nameEditor);
+
+            saveBtn.setColour(juce::TextButton::buttonColourId, juce::Colour(0xffff5430));
+            saveBtn.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+            saveBtn.onClick = [this] { if (onConfirm) onConfirm(); };
+            addAndMakeVisible(saveBtn);
+
+            cancelBtn.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff252a34));
+            cancelBtn.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffcbd5e1));
+            cancelBtn.onClick = [this] { if (onCancel) onCancel(); };
+            addAndMakeVisible(cancelBtn);
+        }
+
+        juce::Rectangle<int> getCardBounds() const {
+            return juce::Rectangle<int>(0, 0, 390, 152).withCentre(getLocalBounds().getCentre());
+        }
+
+        void paint(juce::Graphics& g) override {
+            g.fillAll(juce::Colour(0xb8080a0f));
+            const auto card = getCardBounds().toFloat();
+            g.setColour(juce::Colour(0xff161a23));
+            g.fillRoundedRectangle(card, 7.0f);
+            g.setColour(juce::Colour(0xff38d4ff).withAlpha(0.55f));
+            g.drawRoundedRectangle(card, 7.0f, 1.2f);
+
+            g.setColour(juce::Colours::white);
+            g.setFont(juce::FontOptions(14.0f, juce::Font::bold));
+            g.drawText(isRomanian ? juce::String::fromUTF8("Salvează Preset Ca...") : juce::String("Save Preset As..."),
+                       static_cast<int>(card.getX() + 16), static_cast<int>(card.getY() + 12), 260, 20, juce::Justification::left, false);
+
+            g.setColour(juce::Colour(0xff9aa4b6));
+            g.setFont(juce::FontOptions(11.0f));
+            g.drawText(isRomanian ? juce::String::fromUTF8("Nume preset (salvat în Preseturi Utilizator):")
+                                  : juce::String("Preset name (saved to User Presets):"),
+                       static_cast<int>(card.getX() + 16), static_cast<int>(card.getY() + 36), 358, 16, juce::Justification::left, false);
+        }
+
+        void resized() override {
+            const auto card = getCardBounds();
+            nameEditor.setBounds(card.getX() + 16, card.getY() + 58, card.getWidth() - 32, 30);
+            cancelBtn.setBounds(card.getRight() - 188, card.getBottom() - 42, 82, 26);
+            saveBtn.setBounds(card.getRight() - 98, card.getBottom() - 42, 82, 26);
+        }
+
+        void mouseDown(const juce::MouseEvent& e) override {
+            if (!getCardBounds().contains(e.getPosition())) {
+                if (onCancel) onCancel();
+            }
+        }
+    };
+    SavePresetOverlay savePresetOverlay;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(FidiuCompressorEditor)
 };

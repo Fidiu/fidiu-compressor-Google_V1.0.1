@@ -80,51 +80,53 @@ juce::AudioProcessorValueTreeState::ParameterLayout FidiuCompressorProcessor::cr
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> p;
 
     p.push_back(std::make_unique<juce::AudioParameterChoice>("style", "Style",
-        juce::StringArray{"Clean", "Classic", "Opto", "Vocal", "Mastering", "Bus", "Punch", "Pumping"}, 5));
-    p.push_back(std::make_unique<juce::AudioParameterFloat>("threshold", "Threshold", -60.0f, 0.0f, -18.0f));
+        juce::StringArray{"Clean", "Classic", "Opto", "Vocal", "Mastering", "Bus", "Punch", "Pumping"}, 0));
+    p.push_back(std::make_unique<juce::AudioParameterFloat>("threshold", "Threshold", -60.0f, 0.0f, 0.0f));
     p.push_back(std::make_unique<juce::AudioParameterFloat>("ratio", "Ratio",
-        juce::NormalisableRange<float>(1.0f, 100.0f, 0.05f, 0.32f), 4.00f));
-    p.push_back(std::make_unique<juce::AudioParameterFloat>("knee", "Knee", 0.0f, 72.0f, 12.0f));
-    p.push_back(std::make_unique<juce::AudioParameterFloat>("range", "Range", 0.0f, 60.0f, 36.0f));
+        juce::NormalisableRange<float>(1.0f, 100.0f, 0.05f, 0.32f), 1.00f));
+    p.push_back(std::make_unique<juce::AudioParameterFloat>("knee", "Knee", 0.0f, 72.0f, 0.0f));
+    p.push_back(std::make_unique<juce::AudioParameterFloat>("range", "Range", 0.0f, 60.0f, 0.0f));
     p.push_back(std::make_unique<juce::AudioParameterFloat>("attack", "Attack",
-        juce::NormalisableRange<float>(0.005f, 250.0f, 0.001f, 0.28f), 12.00f));
-    p.push_back(std::make_unique<juce::AudioParameterFloat>("hold", "Hold", 0.0f, 500.0f, 8.0f));
+        juce::NormalisableRange<float>(0.005f, 250.0f, 0.001f, 0.28f), 10.00f));
+    p.push_back(std::make_unique<juce::AudioParameterFloat>("hold", "Hold", 0.0f, 500.0f, 0.0f));
     p.push_back(std::make_unique<juce::AudioParameterFloat>("release", "Release",
-        juce::NormalisableRange<float>(10.0f, 2500.0f, 0.1f, 0.32f), 140.0f));
-    p.push_back(std::make_unique<juce::AudioParameterBool>("autoRelease", "Auto Release", true));
-    p.push_back(std::make_unique<juce::AudioParameterFloat>("character", "Coloriture", 0.0f, 100.0f, 24.0f));
+        juce::NormalisableRange<float>(10.0f, 2500.0f, 0.1f, 0.32f), 100.0f));
+    p.push_back(std::make_unique<juce::AudioParameterBool>("autoRelease", "Auto Release", false));
+    p.push_back(std::make_unique<juce::AudioParameterFloat>("character", "Coloriture", 0.0f, 100.0f, 0.0f));
     p.push_back(std::make_unique<juce::AudioParameterChoice>("colorMode", "Color Mode",
-        juce::StringArray{"Pure", "Tube", "Tape", "Xfmr"}, 1));
+        juce::StringArray{"Pure", "Tube", "Tape", "Xfmr"}, 0));
     p.push_back(std::make_unique<juce::AudioParameterFloat>("mix", "Mix", 0.0f, 100.0f, 100.0f));
     p.push_back(std::make_unique<juce::AudioParameterBool>("parallelMode", "Parallel Mode", false));
-    p.push_back(std::make_unique<juce::AudioParameterFloat>("wetGain", "Wet Gain", -18.0f, 36.0f, 2.4f));
+    p.push_back(std::make_unique<juce::AudioParameterFloat>("wetGain", "Wet Gain", -18.0f, 36.0f, 0.0f));
     p.push_back(std::make_unique<juce::AudioParameterBool>("autoGain", "Auto Gain", false));
     p.push_back(std::make_unique<juce::AudioParameterFloat>("dryGain", "Dry Gain", -36.0f, 12.0f, 0.0f));
-    p.push_back(std::make_unique<juce::AudioParameterBool>("lookaheadOn", "Lookahead On", true));
-    p.push_back(std::make_unique<juce::AudioParameterFloat>("lookaheadMs", "Lookahead", 0.0f, 20.0f, 4.0f));
+    p.push_back(std::make_unique<juce::AudioParameterBool>("lookaheadOn", "Lookahead On", false));
+    p.push_back(std::make_unique<juce::AudioParameterFloat>("lookaheadMs", "Lookahead", 0.0f, 20.0f, 0.0f));
     p.push_back(std::make_unique<juce::AudioParameterChoice>("oversampling", "Oversampling",
-        juce::StringArray{"1x", "2x", "4x"}, 1));
+        juce::StringArray{"1x", "2x", "4x"}, 0));
     p.push_back(std::make_unique<juce::AudioParameterChoice>("channelMode", "Channel Mode",
         juce::StringArray{"Stereo", "Mid", "Side"}, 0));
     p.push_back(std::make_unique<juce::AudioParameterFloat>("stereoLink", "Stereo Link", 0.0f, 100.0f, 100.0f));
     p.push_back(std::make_unique<juce::AudioParameterFloat>("msBalance", "M/S Balance", -100.0f, 100.0f, 0.0f));
     p.push_back(std::make_unique<juce::AudioParameterBool>("scExt", "External SC", false));
+    p.push_back(std::make_unique<juce::AudioParameterChoice>("scMidSide", "SC Mid/Side",
+        juce::StringArray{"SC Stereo", "SC Mid", "SC Side"}, 0));
     p.push_back(std::make_unique<juce::AudioParameterBool>("scAudition", "Audition SC", false));
-    p.push_back(std::make_unique<juce::AudioParameterBool>("scHpfOn", "SC HPF On", true));
+    p.push_back(std::make_unique<juce::AudioParameterBool>("scHpfOn", "SC HPF On", false));
     p.push_back(std::make_unique<juce::AudioParameterFloat>("scHpfFreq", "SC HPF Freq",
-        juce::NormalisableRange<float>(20.0f, 20000.0f, 1.0f, 0.25f), 95.0f));
+        juce::NormalisableRange<float>(20.0f, 20000.0f, 1.0f, 0.25f), 20.0f));
     p.push_back(std::make_unique<juce::AudioParameterChoice>("scHpfSlope", "SC HPF Slope",
-        juce::StringArray{"6", "12", "24", "48"}, 2));
+        juce::StringArray{"6", "12", "24", "48"}, 1));
     p.push_back(std::make_unique<juce::AudioParameterBool>("scLpfOn", "SC LPF On", false));
     p.push_back(std::make_unique<juce::AudioParameterFloat>("scLpfFreq", "SC LPF Freq",
-        juce::NormalisableRange<float>(20.0f, 20000.0f, 1.0f, 0.25f), 12000.0f));
+        juce::NormalisableRange<float>(20.0f, 20000.0f, 1.0f, 0.25f), 20000.0f));
     p.push_back(std::make_unique<juce::AudioParameterChoice>("scLpfSlope", "SC LPF Slope",
         juce::StringArray{"6", "12", "24", "48"}, 1));
     p.push_back(std::make_unique<juce::AudioParameterBool>("scEqOn", "SC Bell On", false));
     p.push_back(std::make_unique<juce::AudioParameterFloat>("scEqFreq", "SC Bell Freq",
-        juce::NormalisableRange<float>(40.0f, 16000.0f, 1.0f, 0.25f), 2400.0f));
+        juce::NormalisableRange<float>(40.0f, 16000.0f, 1.0f, 0.25f), 1000.0f));
     p.push_back(std::make_unique<juce::AudioParameterFloat>("scEqGain", "SC Bell Gain", -18.0f, 18.0f, 0.0f));
-    p.push_back(std::make_unique<juce::AudioParameterFloat>("scEqQ", "SC Bell Q", 0.3f, 8.0f, 1.20f));
+    p.push_back(std::make_unique<juce::AudioParameterFloat>("scEqQ", "SC Bell Q", 0.3f, 8.0f, 1.00f));
     p.push_back(std::make_unique<juce::AudioParameterBool>("levelMatch", "Level Match", false));
     p.push_back(std::make_unique<juce::AudioParameterBool>("bypass", "Bypass", false));
 
@@ -187,6 +189,7 @@ void FidiuCompressorProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
     const float link = apvts.getRawParameterValue("stereoLink")->load() / 100.0f;
     const float msBal = apvts.getRawParameterValue("msBalance")->load() / 100.0f;
     const bool scExt = apvts.getRawParameterValue("scExt")->load() > 0.5f && scBus.getNumChannels() > 0;
+    const int scMsMode = std::clamp(static_cast<int>(std::round(apvts.getRawParameterValue("scMidSide")->load())), 0, 2);
     const bool scAud = apvts.getRawParameterValue("scAudition")->load() > 0.5f;
     const bool hpfOn = apvts.getRawParameterValue("scHpfOn")->load() > 0.5f;
     const float hpfFreq = apvts.getRawParameterValue("scHpfFreq")->load();
@@ -229,7 +232,7 @@ void FidiuCompressorProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
     const auto* scInL = scExt ? scBus.getReadPointer(0) : chL;
     const auto* scInR = scExt ? (scBus.getNumChannels() > 1 ? scBus.getReadPointer(1) : scInL) : chR;
 
-    const float drive = std::min(1.0f, (charPct / 100.0f) * 0.85f + style.colorBase * 0.35f * (charPct / 100.0f + 0.15f));
+    const float drive = (charPct <= 0.05f) ? 0.0f : std::min(1.0f, (charPct / 100.0f) * 0.85f + style.colorBase * 0.35f * (charPct / 100.0f + 0.15f));
     const size_t bufCap = dsp.delayL.size();
     const int telemetryInterval = std::max(256, static_cast<int>(dsp.sr / 60.0));
 
@@ -264,6 +267,16 @@ void FidiuCompressorProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
         if (eqOn && std::abs(eqGain) > 0.05f) {
             scL = dsp.bellStage.processL(scL);
             scR = dsp.bellStage.processR(scR);
+        }
+
+        if (scMsMode == 1) {
+            const float scMid = (scL + scR) * 0.70710678f;
+            scL = scMid;
+            scR = scMid;
+        } else if (scMsMode == 2) {
+            const float scSide = (scL - scR) * 0.70710678f;
+            scL = scSide;
+            scR = scSide;
         }
 
         const int sIdx = scRingIdx.load(std::memory_order_relaxed);
