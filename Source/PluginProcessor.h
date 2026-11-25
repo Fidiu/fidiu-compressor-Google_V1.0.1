@@ -29,14 +29,42 @@ public:
     void getStateInformation(juce::MemoryBlock& destData) override;
     void setStateInformation(const void* data, int sizeInBytes) override;
 
+    void resetPeaks();
+
     juce::AudioProcessorValueTreeState apvts;
+
+    static constexpr int kHistSize = 300;
+    static constexpr int kScFftSize = 1024;
+
+    std::array<std::atomic<float>, kHistSize> histInDb;
+    std::array<std::atomic<float>, kHistSize> histOutDb;
+    std::array<std::atomic<float>, kHistSize> histGrDb;
+    std::atomic<int> histWriteIdx { 0 };
+
+    std::array<std::atomic<float>, kScFftSize> scFftRing;
+    std::atomic<int> scRingIdx { 0 };
+
+    std::atomic<float> currentInDbL { -96.0f };
+    std::atomic<float> currentInDbR { -96.0f };
+    std::atomic<float> currentOutDbL { -96.0f };
+    std::atomic<float> currentOutDbR { -96.0f };
     std::atomic<float> currentGrDb { 0.0f };
-    std::atomic<float> currentInDb { -96.0f };
-    std::atomic<float> currentOutDb { -96.0f };
+    std::atomic<float> currentScDb { -96.0f };
+    std::atomic<float> peakHoldInDb { -96.0f };
+    std::atomic<float> peakHoldOutDb { -96.0f };
+    std::atomic<float> peakHoldGrDb { 0.0f };
+    std::atomic<int> currentLatencySamples { 0 };
+    std::atomic<double> currentSampleRate { 48000.0 };
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     fidiu::FidiuDSP dsp;
+
+    int telemetrySamples = 0;
+    int peakDecayCounter = 0;
+    float blockPeakInL = 0.0f, blockPeakInR = 0.0f;
+    float blockPeakOutL = 0.0f, blockPeakOutR = 0.0f;
+    float blockPeakSc = 0.0f, blockMaxGr = 0.0f;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(FidiuCompressorProcessor)
 };
