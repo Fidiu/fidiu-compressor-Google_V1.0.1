@@ -42,3 +42,7 @@ target_link_libraries(FidiuCompressor PRIVATE
     juce::juce_dsp
     juce::juce_gui_basics
 )
+
+if(MSVC)
+    target_compile_options(FidiuCompressor PRIVATE /utf-8)
+endif()
