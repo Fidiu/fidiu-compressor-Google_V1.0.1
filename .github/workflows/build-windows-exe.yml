@@ -1,0 +1,31 @@
+name: Build Fidiu Compressor Windows EXE Installer
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build-windows-exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure & Build VST3
+        shell: pwsh
+        run: |
+          cmake -B build -A x64
+          cmake --build build --config Release --target FidiuCompressor_VST3 --parallel
+
+      - name: Install Inno Setup & Build FidiuCompressor-Setup.exe
+        shell: pwsh
+        run: |
+          choco install innosetup -y
+          New-Item -ItemType Directory -Force -Path dist-installer | Out-Null
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\FidiuCompressorSetup.iss
+
+      - name: Upload Windows .EXE Installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: FidiuCompressor-Windows-Setup-EXE
+          path: dist-installer/FidiuCompressor-Setup.exe
