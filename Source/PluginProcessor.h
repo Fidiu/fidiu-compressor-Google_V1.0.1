@@ -48,17 +48,24 @@ public:
     std::array<std::atomic<float>, kScFftSize> scFftRing;
     std::atomic<int> scRingIdx { 0 };
 
+    std::array<std::atomic<float>, kScFftSize> inFftRing;
+    std::atomic<int> inRingIdx { 0 };
+
     std::atomic<float> currentInDbL { -96.0f };
     std::atomic<float> currentInDbR { -96.0f };
     std::atomic<float> currentOutDbL { -96.0f };
     std::atomic<float> currentOutDbR { -96.0f };
     std::atomic<float> currentGrDb { 0.0f };
     std::atomic<float> currentScDb { -96.0f };
+    std::atomic<float> currentInRmsDb { -96.0f };
+    std::atomic<float> currentInCrestDb { 0.0f };
+    std::atomic<float> currentInSideRatio { 0.25f };
     std::atomic<float> peakHoldInDb { -96.0f };
     std::atomic<float> peakHoldOutDb { -96.0f };
     std::atomic<float> peakHoldGrDb { 0.0f };
     std::atomic<int> currentLatencySamples { 0 };
     std::atomic<double> currentSampleRate { 48000.0 };
+    std::atomic<int> uiLanguage { 0 }; // 0 = English, 1 = Romana
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
@@ -75,6 +82,7 @@ private:
     float blockPeakInL = 0.0f, blockPeakInR = 0.0f;
     float blockPeakOutL = 0.0f, blockPeakOutR = 0.0f;
     float blockPeakSc = 0.0f, blockMaxGr = 0.0f;
+    float blockInSumSq = 0.0f, blockInMidSq = 0.0f, blockInSideSq = 0.0f;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(FidiuCompressorProcessor)
 };

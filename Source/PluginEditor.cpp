@@ -91,6 +91,48 @@ void FidiuLookAndFeel::drawButtonText(juce::Graphics& g, juce::TextButton& butto
     g.drawFittedText(button.getButtonText(), area, juce::Justification::centred, 1, 0.85f);
 }
 
+juce::Rectangle<int> FidiuLookAndFeel::getTooltipBounds(const juce::String& tipText, juce::Point<int> screenPos, juce::Rectangle<int> parentArea) {
+    juce::AttributedString s;
+    s.setJustification(juce::Justification::centredLeft);
+    const int sep = tipText.indexOf("\n");
+    if (sep > 0) {
+        s.append(tipText.substring(0, sep) + "\n", juce::FontOptions(12.0f, juce::Font::bold), kCyan);
+        s.append(tipText.substring(sep + 1), juce::FontOptions(11.5f), juce::Colour(0xffdce3ee));
+    } else {
+        s.append(tipText, juce::FontOptions(11.5f), juce::Colour(0xffdce3ee));
+    }
+    juce::TextLayout tl;
+    tl.createLayoutWithBalancedLineLengths(s, 280.0f);
+    const int w = static_cast<int>(std::ceil(tl.getWidth())) + 24;
+    const int h = static_cast<int>(std::ceil(tl.getHeight())) + 20;
+    const int x = juce::jlimit(parentArea.getX() + 6, std::max(parentArea.getX() + 6, parentArea.getRight() - w - 6), screenPos.x - w / 2);
+    int y = screenPos.y - h - 14;
+    if (y < parentArea.getY() + 6)
+        y = std::min(parentArea.getBottom() - h - 6, screenPos.y + 18);
+    return { x, y, w, h };
+}
+
+void FidiuLookAndFeel::drawTooltip(juce::Graphics& g, const juce::String& text, int width, int height) {
+    auto bounds = juce::Rectangle<float>(0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height)).reduced(1.5f);
+    g.setColour(juce::Colour(0xf511151e));
+    g.fillRoundedRectangle(bounds, 7.0f);
+    g.setColour(kCyan.withAlpha(0.55f));
+    g.drawRoundedRectangle(bounds, 7.0f, 1.2f);
+
+    juce::AttributedString s;
+    s.setJustification(juce::Justification::centredLeft);
+    const int sep = text.indexOf("\n");
+    if (sep > 0) {
+        s.append(text.substring(0, sep) + "\n", juce::FontOptions(12.0f, juce::Font::bold), kCyan);
+        s.append(text.substring(sep + 1), juce::FontOptions(11.5f), juce::Colour(0xffdce3ee));
+    } else {
+        s.append(text, juce::FontOptions(11.5f), juce::Colour(0xffdce3ee));
+    }
+    juce::TextLayout tl;
+    tl.createLayoutWithBalancedLineLengths(s, static_cast<float>(std::max(80, width - 22)));
+    tl.draw(g, bounds.reduced(10.0f, 8.0f));
+}
+
 void FidiuLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int width, int height,
                                         float sliderPos, float rotaryStartAngle,
                                         float rotaryEndAngle, juce::Slider& slider) {
@@ -168,12 +210,30 @@ FidiuCompressorEditor::FidiuCompressorEditor(FidiuCompressorProcessor& p)
 
     smoothedBins.fill(-90.0f);
 
-    presetBox.addItem("Studio Bus Glue", 1);
-    presetBox.addItem("Mastering Transparent", 2);
-    presetBox.addItem("Vocal Forward Opto", 3);
-    presetBox.addItem("Parallel Drum Punch", 4);
-    presetBox.addItem("Zero-Overshoot Lookahead", 5);
-    presetBox.addItem("External Kick Ducking", 6);
+    static const char* presetNames[20] = {
+        "Bus: Studio Bus Glue",
+        "Mastering: Transparent",
+        "Vocal: Forward Opto",
+        "Drums: Parallel Punch",
+        "Limiting: Zero-Overshoot",
+        "Electronic: Kick Ducking",
+        "Bus: Warm Tape Mix Bus",
+        "Bus: Side Width Control",
+        "Mastering: Loud & Clear",
+        "Mastering: Mid Analog Sheen",
+        "Kick: Sub Weight & Snap",
+        "Kick: Tight Electronic Click",
+        "Bass: Sub Lock Opto",
+        "Bass: Parallel Growl",
+        "Hats: Silky De-Harsh",
+        "Guitar: Acoustic Body",
+        "Guitar: Crunch Tightener",
+        "Piano: Concert Grand",
+        "Synths: Lush Wide Pad",
+        "Synths: Parallel Arp Slap"
+    };
+    for (int i = 0; i < 20; ++i)
+        presetBox.addItem(presetNames[i], i + 1);
     presetBox.setSelectedId(1, juce::dontSendNotification);
     presetBox.onChange = [this] { applyPreset(presetBox.getSelectedId() - 1); };
     addAndMakeVisible(presetBox);
@@ -187,10 +247,19 @@ FidiuCompressorEditor::FidiuCompressorEditor(FidiuCompressorProcessor& p)
         addAndMakeVisible(b);
     };
 
+    styleBtn(presetPrevBtn, juce::Colour(0xff2c3342));
+    styleBtn(presetNextBtn, juce::Colour(0xff2c3342));
+    presetPrevBtn.setClickingTogglesState(false);
+    presetNextBtn.setClickingTogglesState(false);
+    presetPrevBtn.onClick = [this] { stepPreset(-1); };
+    presetNextBtn.onClick = [this] { stepPreset(1); };
+
     styleBtn(bankABtn, juce::Colour(0xff164e63));
     styleBtn(bankBBtn, kOrange.darker(0.2f));
     styleBtn(copyAbBtn, juce::Colour(0xff2c3342));
     styleBtn(resetBtn, juce::Colour(0xff2c3342));
+    styleBtn(analyzeBtn, juce::Colour(0xff164e63));
+    styleBtn(langBtn, juce::Colour(0xff164e63));
     styleBtn(levelMatchBtn, juce::Colour(0xff164e63));
     styleBtn(bypassBtn, kAmber.darker(0.35f));
     styleBtn(dispModeBtn, juce::Colour(0xff2c3342));
@@ -201,6 +270,8 @@ FidiuCompressorEditor::FidiuCompressorEditor(FidiuCompressorProcessor& p)
     bankBBtn.setClickingTogglesState(false);
     copyAbBtn.setClickingTogglesState(false);
     resetBtn.setClickingTogglesState(false);
+    analyzeBtn.setClickingTogglesState(false);
+    langBtn.setClickingTogglesState(false);
 
     bankABtn.onClick = [this] { audioProcessor.selectBank(0); updateButtonStates(); repaint(); };
     bankBBtn.onClick = [this] { audioProcessor.selectBank(1); updateButtonStates(); repaint(); };
@@ -210,6 +281,45 @@ FidiuCompressorEditor::FidiuCompressorEditor(FidiuCompressorProcessor& p)
         copyFlashFrames = 55;
     };
     resetBtn.onClick = [this] { audioProcessor.resetToDefault(); updateButtonStates(); repaint(); };
+    analyzeBtn.onClick = [this] { startSignalAnalysis(); };
+    langBtn.onClick = [this] {
+        const bool isRo = audioProcessor.uiLanguage.load(std::memory_order_relaxed) == 1;
+        juce::PopupMenu menu;
+        menu.addItem(1, "English", true, !isRo);
+        menu.addItem(2, juce::String::fromUTF8("Română"), true, isRo);
+        juce::Component::SafePointer<FidiuCompressorEditor> safeThis(this);
+        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&langBtn),
+            [safeThis](int result) {
+                if (safeThis == nullptr) return;
+                if (result == 1 || result == 2) {
+                    safeThis->audioProcessor.uiLanguage.store(result - 1, std::memory_order_relaxed);
+                    safeThis->applyTooltipLanguage();
+                    safeThis->repaint();
+                }
+            });
+    };
+
+    for (size_t i = 0; i < 3; ++i) {
+        styleBtn(sugPresetBtns[i], i == 0 ? juce::Colour(0xff164e63) : juce::Colour(0xff2c3342));
+        sugPresetBtns[i].setClickingTogglesState(false);
+        sugPresetBtns[i].setVisible(false);
+        sugPresetBtns[i].onClick = [this, i] {
+            const int pIdx = std::clamp(sugPresetIndices[i], 0, 19);
+            presetBox.setSelectedId(pIdx + 1, juce::dontSendNotification);
+            applyPreset(pIdx);
+            updateButtonStates();
+            repaint();
+        };
+    }
+    styleBtn(sugCloseBtn, juce::Colour(0xff2c3342));
+    sugCloseBtn.setClickingTogglesState(false);
+    sugCloseBtn.setVisible(false);
+    sugCloseBtn.onClick = [this] {
+        hasSuggestion = false;
+        for (auto& b : sugPresetBtns) b.setVisible(false);
+        sugCloseBtn.setVisible(false);
+        repaint();
+    };
 
     dispModeBtn.setClickingTogglesState(false);
     scModeBtn.setClickingTogglesState(false);
@@ -356,11 +466,305 @@ FidiuCompressorEditor::FidiuCompressorEditor(FidiuCompressorProcessor& p)
     scEqAttBtn    = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.apvts, "scEqOn", scEqBtn);
 
     updateButtonStates();
+    applyTooltipLanguage();
+
     startTimerHz(60);
 }
 
 FidiuCompressorEditor::~FidiuCompressorEditor() {
     setLookAndFeel(nullptr);
+}
+
+void FidiuCompressorEditor::applyTooltipLanguage() {
+    const int lang = std::clamp(audioProcessor.uiLanguage.load(std::memory_order_relaxed), 0, 1);
+    const bool isRo = (lang == 1);
+    lastAppliedLang = lang;
+
+    auto u8 = [](const char* s) { return juce::String::fromUTF8(s); };
+    auto tr = [&](const char* en, const char* ro) { return u8(isRo ? ro : en); };
+
+    langBtn.setButtonText(isRo ? "RO v" : "EN v");
+    langBtn.setTooltip(tr(
+        "Tooltip Language Menu\nSwitch control descriptions and tooltip balloons between English and Romanian (Română).",
+        "Meniu Limbă Descrieri\nComută descrierile tuturor controalelor între Limba Română și Engleză."
+    ));
+
+    presetPrevBtn.setTooltip(tr(
+        "Previous Preset\nSteps backward through the 20 factory presets.",
+        "Preset Anterior\nTrece la presetul anterior din cele 20 de preseturi integrate."
+    ));
+    presetBox.setTooltip(tr(
+        "Factory Presets\nSelect from 20 studio presets for Mix Bus, Mastering, Vocals, Drums, Kick, Bass, Hats, Guitar, Piano, and Synths.",
+        "Preseturi de Fabrică\nAlege din 20 de preseturi de studio pentru Mix Bus, Mastering, Voce, Tobe, Kick, Bass, Hats, Chitară, Pian și Synths."
+    ));
+    presetNextBtn.setTooltip(tr(
+        "Next Preset\nSteps forward to the next factory preset.",
+        "Preset Următor\nAvansează la următorul preset din listă."
+    ));
+    bankABtn.setTooltip(tr(
+        "Compare Bank A\nSwitches to parameter slot A for instant A/B comparison.",
+        "Bancă Comparație A\nActivează slotul A de parametri pentru comparație rapidă A/B."
+    ));
+    bankBBtn.setTooltip(tr(
+        "Compare Bank B\nSwitches to parameter slot B for instant A/B comparison.",
+        "Bancă Comparație B\nActivează slotul B de parametri pentru comparație rapidă A/B."
+    ));
+    copyAbBtn.setTooltip(tr(
+        "Copy A/B Slot\nCopies settings from the active slot (A or B) into the opposite slot.",
+        "Copiere Slot A/B\nCopiază toate setările din slotul activ (A sau B) în celălalt slot pentru variații rapide."
+    ));
+    resetBtn.setTooltip(tr(
+        "Reset Parameters\nRestores all compressor, Coloriture, and sidechain controls to defaults.",
+        "Resetare Parametri\nReaduce compresorul, Coloriture și sidechain-ul la valorile implicite."
+    ));
+    analyzeBtn.setTooltip(tr(
+        "Analyze Input Signal\nScans frequency balance, crest factor, and Mid/Side width to identify the signal and suggest matching presets.",
+        "Analizare Semnal Intrare\nAnalizează spectrul, factorul crest și lățimea Mid/Side pentru a detecta instrumentul sau mix-busul și a sugera preseturi."
+    ));
+    levelMatchBtn.setTooltip(tr(
+        "Auto Level Match\nMatches compressed output RMS loudness to input loudness for fair Bypass comparison.",
+        "Potrivire Automată Nivel\nEgalizează volumul RMS al ieșirii comprimate cu cel al intrării pentru comparații corecte la Bypass."
+    ));
+    bypassBtn.setTooltip(tr(
+        "Bypass Processor\nCleanly bypasses dynamics, saturation, and makeup gain for reference comparison.",
+        "Bypass Procesor\nDezactivează temporar compresia, saturația și amplificarea pentru comparație directă cu semnalul neprocesat."
+    ));
+    dispModeBtn.setTooltip(tr(
+        "Dynamics Display\nShows scrolling Input/Output envelopes and Gain Reduction trace. Drag cyan line to set Threshold.",
+        "Afișaj Dinamică\nAfișează anvelopele Input/Output și curba de reducere a câștigului (GR). Trage linia cyan pentru Threshold."
+    ));
+    scModeBtn.setTooltip(tr(
+        "Sidechain EQ & 4096-pt FFT\nShows high-resolution sidechain FFT spectrum and interactive filter curve. Scroll wheel adjusts Q or slope.",
+        "Sidechain EQ & FFT 4096-pt\nAfișează spectrul FFT de înaltă rezoluție și curba EQ sidechain. Rotița mouse-ului reglează Q sau panta."
+    ));
+    kneeToggleBtn.setTooltip(tr(
+        "Transfer Knee Curve\nToggles the live input-vs-output transfer curve overlay.",
+        "Curbă Transfer Knee\nActivează sau ascunde graficul live al curbei de transfer Input/Output."
+    ));
+
+    static const char* styleTipsEn[8] = {
+        "Style: Clean\nTransparent digital dynamics with very low harmonic coloration.",
+        "Style: Classic\nBalanced VCA-style punch with subtle analog character.",
+        "Style: Opto\nSmooth slow-release optical curve ideal for vocals, bass, and acoustic sources.",
+        "Style: Vocal\nAdaptive presence detection keeping vocals forward and even.",
+        "Style: Mastering\nUltra-clean RMS-weighted transparent glue for stereo mastering.",
+        "Style: Bus\nCohesive drum and mix-bus glue with musical dual-stage release.",
+        "Style: Punch\nFast transient snap and aggressive attack bite for drums and percussive tracks.",
+        "Style: Pumping\nFast recovery and tight detector timing for classic EDM pumping."
+    };
+    static const char* styleTipsRo[8] = {
+        "Stil: Clean\nDinamică digitală ultra-transparentă, cu distorsiuni armonice minime.",
+        "Stil: Classic\nImpact și densitate clasică VCA dependentă de program, cu caracter analogic subtil.",
+        "Stil: Opto\nRevenire optică lentă în două etape, ideală pentru voce, bass și instrumente acustice.",
+        "Stil: Vocal\nControl dinamic adaptiv ce menține vocea clară și prezentă în față în mix.",
+        "Stil: Mastering\nCompresie coerentă de înaltă precizie RMS, optimizată pentru mastering stereo transparent.",
+        "Stil: Bus\nCoeziune muzicală pentru mix bus și grupuri, ce leagă tobele, bassul și instrumentele.",
+        "Stil: Punch\nAtac rapid și contur percusiv agresiv pentru tobe și tranziții accentuate.",
+        "Stil: Pumping\nRevenire rapidă și respirație ritmică ideală pentru efectul clasic de pumping EDM."
+    };
+    for (int i = 0; i < 8; ++i)
+        styleBtns[static_cast<size_t>(i)].setTooltip(tr(styleTipsEn[i], styleTipsRo[i]));
+
+    static const char* colorTipsEn[4] = {
+        "Coloriture: Pure\nClean symmetrical saturation for minimal harmonic distortion.",
+        "Coloriture: Tube\nAsymmetric triode warmth adding rich even-order tube harmonics.",
+        "Coloriture: Tape\nSmooth magnetic tape saturation with gentle top-end sheen.",
+        "Coloriture: Xfmr\nIron transformer saturation adding dense low-mid weight and punch."
+    };
+    static const char* colorTipsRo[4] = {
+        "Coloriture: Pure\nSaturație simetrică extrem de curată pentru control digital transparent.",
+        "Coloriture: Tube\nCăldură asimetrică de lampă (triodă) ce adaugă armonice pare plăcute.",
+        "Coloriture: Tape\nSaturație fină de bandă magnetică cu rotunjire plăcută a înaltelor.",
+        "Coloriture: Xfmr\nSaturație de transformator pe fier ce adaugă greutate în joase-medii și punch."
+    };
+    for (int i = 0; i < 4; ++i)
+        colorBtns[static_cast<size_t>(i)].setTooltip(tr(colorTipsEn[i], colorTipsRo[i]));
+
+    static const char* osTipsEn[3] = {
+        "Oversampling 1x\nZero-oversampling standard sample rate processing.",
+        "Oversampling 2x\nDoubles internal DSP rate to reduce aliasing on fast transients and Drive.",
+        "Oversampling 4x\nQuadruples internal DSP rate for pristine limiting and analog saturation."
+    };
+    static const char* osTipsRo[3] = {
+        "Oversampling 1x\nProcesare standard la frecvența de eșantionare a proiectului.",
+        "Oversampling 2x\nDublează rata internă DSP pentru reducerea aliasing-ului la Drive și atacuri rapide.",
+        "Oversampling 4x\nCvadruplează rata internă pentru limitare curată și saturație analogică impecabilă."
+    };
+    for (int i = 0; i < 3; ++i)
+        osBtns[static_cast<size_t>(i)].setTooltip(tr(osTipsEn[i], osTipsRo[i]));
+
+    static const char* chModeTipsEn[3] = {
+        "Routing: Stereo\nProcesses full Left/Right stereo audio with optional M/S Balance bias.",
+        "Routing: Mid\nCompresses only the center (Mid) mono signal, leaving stereo Sides untouched.",
+        "Routing: Side\nCompresses only the stereo Side width without touching center punch."
+    };
+    static const char* chModeTipsRo[3] = {
+        "Procesare: Stereo\nProcesează întregul semnal stereo Left/Right, cu ajustare opțională M/S Balance.",
+        "Procesare: Mid\nComprimă exclusiv canalul central (Mid), lăsând lateralele stereo (Side) neatinse.",
+        "Procesare: Side\nComprimă exclusiv informația laterală (Side) fără a afecta impactul din centru."
+    };
+    for (int i = 0; i < 3; ++i)
+        chModeBtns[static_cast<size_t>(i)].setTooltip(tr(chModeTipsEn[i], chModeTipsRo[i]));
+
+    static const char* slopeNames[4] = { "6", "12", "24", "48" };
+    for (int i = 0; i < 4; ++i) {
+        if (isRo) {
+            hpfSlopeBtns[static_cast<size_t>(i)].setTooltip(u8("Pantă HPF (") + slopeNames[i] + u8(" dB/oct)\nSetează abruptimea filtrului trece-sus din detectorul sidechain."));
+            lpfSlopeBtns[static_cast<size_t>(i)].setTooltip(u8("Pantă LPF (") + slopeNames[i] + u8(" dB/oct)\nSetează abruptimea filtrului trece-jos din detectorul sidechain."));
+        } else {
+            hpfSlopeBtns[static_cast<size_t>(i)].setTooltip(juce::String("HPF Slope (") + slopeNames[i] + " dB/oct)\nSets Butterworth High-Pass roll-off steepness in sidechain detector.");
+            lpfSlopeBtns[static_cast<size_t>(i)].setTooltip(juce::String("LPF Slope (") + slopeNames[i] + " dB/oct)\nSets Butterworth Low-Pass roll-off steepness in sidechain detector.");
+        }
+    }
+
+    for (size_t i = 0; i < 3; ++i)
+        sugPresetBtns[i].setTooltip(tr(
+            "Suggested Preset\nApplies this signal-matched factory preset.",
+            "Preset Sugerat\nAplică acest preset recomandat automat pe baza analizei semnalului."
+        ));
+    sugCloseBtn.setTooltip(tr(
+        "Close Suggestions\nDismisses the signal analyzer suggestion banner.",
+        "Închide Sugestiile\nAscunde panoul cu preseturile sugerate de analizator."
+    ));
+
+    autoRelBtn.setTooltip(tr(
+        "Auto Release\nEnables program-dependent dual-stage release adapting to transients vs sustained notes.",
+        "Auto Release\nActivează revenirea adaptivă în două etape, rapidă pe tranziții și lentă pe sunete susținute."
+    ));
+    parallelBtn.setTooltip(tr(
+        "Overall Parallel Compression\nKeeps Dry signal intact (via Dry Gain) and sums compressed Wet signal additively.",
+        "Compresie Paralelă Globală\nPăstrează semnalul Dry intact (controlat de Dry Gain) și adaugă aditiv semnalul comprimat Wet."
+    ));
+    autoGainBtn.setTooltip(tr(
+        "Auto Makeup Gain\nAutomatically estimates makeup gain based on Threshold, Ratio, Knee, and Range.",
+        "Auto Makeup Gain\nCompensează automat nivelul pierdut prin compresie în funcție de Threshold, Ratio, Knee și Range."
+    ));
+    lookaheadBtn.setTooltip(tr(
+        "Lookahead Switch\nEnables sample-accurate lookahead delay (with DAW PDC) to catch peaks before overshoot.",
+        "Comutator Lookahead\nActivează întârzierea anticipativă (compensată automat în DAW) pentru prinderea vârfurilor înainte de prag."
+    ));
+    scIntBtn.setTooltip(tr(
+        "Internal Sidechain\nTriggers compression from the main audio input.",
+        "Sidechain Intern\nDeclanșează compresia direct din semnalul audio de intrare al pistei."
+    ));
+    scExtBtn.setTooltip(tr(
+        "External Sidechain\nTriggers compression from the external sidechain input bus.",
+        "Sidechain Extern\nDeclanșează compresia dintr-o sursă externă rutată pe intrarea de sidechain din DAW."
+    ));
+    scAudBtn.setTooltip(tr(
+        "Sidechain Audition\nRoutes the filtered sidechain detector signal directly to output for monitoring.",
+        "Audiție Sidechain\nTrimite semnalul filtrat din detector direct la ieșire pentru a auzi exact ce declanșează compresia."
+    ));
+    scHpfBtn.setTooltip(tr(
+        "Sidechain HPF\nAttenuates sub-bass frequencies in the detector so kick doesn't pump the mix.",
+        "Sidechain HPF (Trece-Sus)\nActivează filtrul trece-sus în detector pentru ca sub-bass-ul să nu declanșeze pompări nedorite."
+    ));
+    scLpfBtn.setTooltip(tr(
+        "Sidechain LPF\nAttenuates high frequencies in the detector to ignore bright cymbals or sibilance.",
+        "Sidechain LPF (Trece-Jos)\nActivează filtrul trece-jos în detector pentru a ignora înaltele agresive sau cinelele."
+    ));
+    scEqBtn.setTooltip(tr(
+        "Sidechain Bell EQ\nEnables a parametric Bell filter in the detector to emphasize or duck specific frequencies.",
+        "Sidechain Bell EQ\nActivează filtrul parametric tip clopot în detector pentru a accentua sau atenua o zonă de frecvențe."
+    ));
+
+    threshSlider.setTooltip(tr(
+        "Threshold (-60 to 0 dB)\nSets the level where gain reduction starts.",
+        "Threshold (-60 până la 0 dB)\nStabilește nivelul de la care începe compresia; semnalul peste prag este atenuat."
+    ));
+    ratioSlider.setTooltip(tr(
+        "Ratio (1:1 to inf:1)\nControls compression strength above Threshold.",
+        "Ratio (1:1 până la inf:1)\nControlează intensitatea compresiei deasupra pragului, de la lipire ușoară până la limitare."
+    ));
+    kneeSlider.setTooltip(tr(
+        "Knee (0 to 72 dB)\nSoftens the compression transition around Threshold.",
+        "Knee (0 până la 72 dB)\nRotunjește tranziția compresiei în jurul pragului, de la hard knee (0 dB) la soft knee progresiv."
+    ));
+    rangeSlider.setTooltip(tr(
+        "Range (0 to 60 dB)\nCaps maximum gain reduction depth to preserve peak contrast.",
+        "Range (0 până la 60 dB)\nLimitează reducerea maximă de câștig permisă pentru a păstra contrastul dinamic natural."
+    ));
+    attackSlider.setTooltip(tr(
+        "Attack (0.005 to 250 ms)\nControls how fast compression reacts to rising transients.",
+        "Attack (0.005 până la 250 ms)\nDetermină cât de rapid reacționează compresorul la apariția tranzițiilor peste prag."
+    ));
+    holdSlider.setTooltip(tr(
+        "Hold (0 to 500 ms)\nHolds peak gain reduction briefly before Release starts.",
+        "Hold (0 până la 500 ms)\nMenține compresia la nivelul maxim pentru scurt timp înainte ca faza de Release să înceapă."
+    ));
+    releaseSlider.setTooltip(tr(
+        "Release (10 to 2500 ms)\nControls recovery speed back to 0 dB gain reduction.",
+        "Release (10 până la 2500 ms)\nControlează viteza cu care compresorul revine la 0 dB reducere după scăderea semnalului."
+    ));
+    charSlider.setTooltip(tr(
+        "Coloriture Drive (0 to 100%)\nControls analog harmonic saturation intensity.",
+        "Coloriture Drive (0–100%)\nReglează cantitatea de saturație armonică analogică aplicată în modul Coloriture selectat."
+    ));
+    mixSlider.setTooltip(tr(
+        "Mix (0 to 100%)\nBlends Dry/Wet or scales additive Wet signal in Parallel mode.",
+        "Mix (0–100%)\nCombină semnalul Dry cu Wet în modul standard, sau reglează nivelul căii Wet în modul Parallel."
+    ));
+    gainSlider.setTooltip(tr(
+        "Wet Gain (-18 to +36 dB)\nPost-compression makeup gain for the compressed Wet path.",
+        "Wet Gain (-18 până la +36 dB)\nAmplificare de compensare aplicată exclusiv semnalului comprimat (Wet)."
+    ));
+    dryGainSlider.setTooltip(tr(
+        "Dry Gain (-inf to +12 dB)\nIndependent level trim for the uncompressed Dry path.",
+        "Dry Gain (-inf până la +12 dB)\nNivel independent pentru semnalul necomprimat (Dry), esențial în compresia paralelă."
+    ));
+    lookaheadSlider.setTooltip(tr(
+        "Lookahead Time (0 to 20 ms)\nAnticipation window before transients reach the compressor.",
+        "Timp Lookahead (0–20 ms)\nFereastra de anticipare în milisecunde înainte ca semnalul să atingă detectorul."
+    ));
+    linkSlider.setTooltip(tr(
+        "Stereo Link (0 to 100%)\nBlends between dual-mono L/R detection and linked stereo detection.",
+        "Stereo Link (0–100%)\nCombină detecția independentă dual-mono (0%) cu detecția comună stereo (100%)."
+    ));
+    msSlider.setTooltip(tr(
+        "M/S Balance\nBiases detection and compression toward Mid or Side in Stereo mode.",
+        "Balans M/S (Mid/Side)\nÎnclină detecția și compresia spre centrul Mid sau spre lateralele Side în modul Stereo."
+    ));
+    scHpfSlider.setTooltip(tr(
+        "Sidechain HPF Frequency\nCutoff frequency below which detector energy is rolled off.",
+        "Frecvență HPF Sidechain\nFrecvența de tăiere sub care energia joasă este atenuată din circuitul de detecție."
+    ));
+    scLpfSlider.setTooltip(tr(
+        "Sidechain LPF Frequency\nCutoff frequency above which detector energy is rolled off.",
+        "Frecvență LPF Sidechain\nFrecvența de tăiere peste care frecvențele înalte sunt atenuate din detector."
+    ));
+    scEqFreqSlider.setTooltip(tr(
+        "SC Bell Frequency\nCenter frequency of the parametric sidechain Bell EQ.",
+        "Frecvență Bell Sidechain\nFrecvența centrală a filtrului parametric tip clopot din detectorul sidechain."
+    ));
+    scEqGainSlider.setTooltip(tr(
+        "SC Bell Gain\nBoosts or cuts target detector frequency sensitivity.",
+        "Câștig Bell Sidechain\nAmplifică sau atenuează sensibilitatea compresorului în banda de frecvență selectată."
+    ));
+    scEqQSlider.setTooltip(tr(
+        "SC Bell Q\nControls bandwidth sharpness (0.3 wide to 8.0 narrow) of the Bell EQ.",
+        "Factor Q Bell Sidechain\nControlează lățimea de bandă a filtrului (0.3 larg până la 8.0 îngust și selectiv)."
+    ));
+}
+
+juce::String FidiuCompressorEditor::getTooltip() {
+    const bool isRo = audioProcessor.uiLanguage.load(std::memory_order_relaxed) == 1;
+    const auto pos = getMouseXYRelative();
+    if (metersBounds.contains(pos)) {
+        return juce::String::fromUTF8(isRo
+            ? "Nivelmetre IN / GR / OUT\nAfișează nivelul de intrare (IN), reducerea de câștig în timp real (GR) și nivelul de ieșire (OUT) în dBFS. Click pentru resetare peak-hold."
+            : "IN / GR / OUT Meters\nDisplays Input peak-hold, real-time Gain Reduction (top-down), and Output peak-hold levels in dBFS. Click meters to reset peak holds.");
+    }
+    if (displayBounds.contains(pos)) {
+        if (displayMode == DisplayMode::Dynamics) {
+            return juce::String::fromUTF8(isRo
+                ? "Afișaj Dinamică\nAfișează anvelopele Input/Output și curba de reducere a câștigului (GR). Trage linia cyan vertical pentru a regla Threshold."
+                : "Dynamics Display\nShows scrolling Input/Output envelopes and Gain Reduction trace. Drag the cyan dashed line vertically to set Threshold.");
+        }
+        return juce::String::fromUTF8(isRo
+            ? "Sidechain EQ & FFT 4096-pt\nAfișează spectrul sidechain și curba interactivă a filtrelor. Trage punctele pentru acordaj; rotița mouse-ului reglează Q sau panta."
+            : "Sidechain EQ & 4096-pt FFT\nDisplays sidechain spectrum and interactive filter curve. Drag nodes to tune; scroll mouse wheel to adjust Q or slope.");
+    }
+    return {};
 }
 
 void FidiuCompressorEditor::setChoiceParam(const juce::String& paramId, int index) {
@@ -377,55 +781,88 @@ int FidiuCompressorEditor::getChoiceParam(const juce::String& paramId) const {
     return 0;
 }
 
+void FidiuCompressorEditor::stepPreset(int dir) {
+    const int count = presetBox.getNumItems();
+    if (count <= 0) return;
+    const int curIdx = std::max(0, presetBox.getSelectedId() - 1);
+    const int nextIdx = (curIdx + dir + count) % count;
+    presetBox.setSelectedId(nextIdx + 1, juce::dontSendNotification);
+    applyPreset(nextIdx);
+}
+
 void FidiuCompressorEditor::applyPreset(int idx) {
+    struct PresetDef {
+        int style, colorMode, os, chMode;
+        float thresh, ratio, knee, range, att, hold, rel;
+        bool autoRel, parallelOn, autoGain, laOn, scExt;
+        float charPct, mix, wetGain, dryGain, laMs, link;
+        bool hpfOn, lpfOn, eqOn;
+        float hpfFreq, lpfFreq, eqFreq, eqGain, eqQ;
+        int hpfSlope, lpfSlope;
+    };
+
+    static constexpr PresetDef presets[20] = {
+        { 5, 1, 1, 0, -18.0f,  4.0f, 12.0f, 36.0f, 12.0f,  8.0f, 140.0f, true,  false, false, true,  false, 24.0f, 100.0f, 2.4f, 0.0f,  4.0f, 100.0f, true,  false, false,   95.0f, 12000.0f, 2400.0f, 0.0f, 1.2f, 2, 1 },
+        { 4, 3, 2, 0, -14.5f,  2.2f, 24.0f, 12.0f, 28.0f,  0.0f, 220.0f, true,  false, true,  true,  false, 14.0f, 100.0f, 1.5f, 0.0f,  2.5f,  90.0f, true,  false, false,   65.0f, 12000.0f, 2400.0f, 0.0f, 1.2f, 1, 1 },
+        { 3, 2, 1, 0, -21.0f,  3.5f, 16.0f, 24.0f,  6.5f, 12.0f, 160.0f, true,  false, false, true,  false, 32.0f, 100.0f, 4.0f, 0.0f,  3.0f, 100.0f, true,  false, true,   130.0f, 12000.0f, 3200.0f, 3.5f, 1.4f, 2, 1 },
+        { 6, 1, 2, 0, -26.0f, 10.0f,  6.0f, 42.0f, 18.0f, 15.0f,  85.0f, false, true,  false, false, false, 58.0f,  52.0f, 6.5f, 0.0f,  0.0f, 100.0f, true,  true,  false,  110.0f,  8500.0f, 2400.0f, 0.0f, 1.2f, 2, 1 },
+        { 0, 0, 2, 0, -11.0f, 100.0f, 1.5f, 24.0f,  0.1f, 10.0f,  75.0f, false, false, false, true,  false,  8.0f, 100.0f, 3.0f, 0.0f, 10.0f, 100.0f, false, false, false,   30.0f, 12000.0f, 2400.0f, 0.0f, 1.2f, 1, 1 },
+        { 7, 2, 1, 0, -24.0f,  8.0f,  8.0f, 30.0f,  1.5f, 25.0f, 175.0f, false, false, false, true,  true,  28.0f, 100.0f, 2.0f, 0.0f,  2.0f, 100.0f, true,  true,  false,   45.0f,   450.0f, 2400.0f, 0.0f, 1.2f, 1, 2 },
+        { 5, 2, 1, 0, -16.5f,  2.5f, 18.0f, 18.0f, 18.0f,  4.0f, 180.0f, true,  false, false, true,  false, 34.0f, 100.0f, 1.8f, 0.0f,  2.0f, 100.0f, true,  false, false,   80.0f, 12000.0f, 2400.0f, 0.0f, 1.2f, 1, 1 },
+        { 5, 3, 1, 2, -22.0f,  3.0f, 14.0f, 16.0f, 20.0f,  6.0f, 190.0f, true,  false, false, true,  false, 18.0f, 100.0f, 1.2f, 0.0f,  2.5f, 100.0f, true,  false, false,  140.0f, 12000.0f, 2400.0f, 0.0f, 1.2f, 2, 1 },
+        { 4, 0, 2, 0, -12.5f,  2.0f, 20.0f,  8.0f, 35.0f,  0.0f, 210.0f, true,  false, true,  true,  false, 10.0f, 100.0f, 1.4f, 0.0f,  3.5f,  92.0f, true,  false, false,   55.0f, 12000.0f, 2400.0f, 0.0f, 1.2f, 1, 1 },
+        { 4, 1, 2, 1, -15.5f,  1.8f, 16.0f, 10.0f, 25.0f,  2.0f, 185.0f, true,  false, true,  true,  false, 22.0f, 100.0f, 1.2f, 0.0f,  2.0f, 100.0f, true,  false, false,   70.0f, 12000.0f, 2400.0f, 0.0f, 1.2f, 1, 1 },
+        { 6, 1, 1, 0, -20.0f,  5.5f,  6.0f, 28.0f, 22.0f, 12.0f,  70.0f, false, false, false, false, false, 36.0f, 100.0f, 3.2f, 0.0f,  0.0f, 100.0f, true,  true,  false,   45.0f,  3500.0f, 2400.0f, 0.0f, 1.2f, 1, 1 },
+        { 1, 3, 1, 0, -19.0f,  6.5f,  4.0f, 32.0f, 15.0f,  8.0f,  85.0f, false, false, false, true,  false, 30.0f, 100.0f, 3.5f, 0.0f,  1.0f, 100.0f, true,  false, true,    35.0f, 12000.0f,   65.0f, 4.0f, 1.5f, 1, 1 },
+        { 2, 1, 1, 0, -22.0f,  4.5f, 10.0f, 28.0f,  8.0f, 15.0f, 110.0f, false, false, false, true,  false, 34.0f, 100.0f, 3.8f, 0.0f,  2.0f, 100.0f, true,  true,  false,   32.0f,  1200.0f, 2400.0f, 0.0f, 1.2f, 1, 1 },
+        { 6, 2, 2, 0, -25.0f,  8.0f,  8.0f, 36.0f, 12.0f, 10.0f,  90.0f, false, true,  false, false, false, 46.0f,  60.0f, 4.5f, 0.0f,  0.0f, 100.0f, true,  false, true,    75.0f, 12000.0f,  900.0f, 3.0f, 1.3f, 1, 1 },
+        { 0, 2, 2, 0, -18.5f,  3.2f, 14.0f, 14.0f,  0.8f,  4.0f,  60.0f, false, false, false, true,  false, 16.0f, 100.0f, 1.5f, 0.0f,  1.5f, 100.0f, true,  false, true,  2800.0f, 12000.0f, 7500.0f, 4.5f, 1.8f, 2, 1 },
+        { 2, 1, 1, 0, -19.5f,  3.5f, 14.0f, 20.0f, 14.0f,  6.0f, 150.0f, true,  false, false, true,  false, 26.0f, 100.0f, 2.5f, 0.0f,  2.0f, 100.0f, true,  false, false,  120.0f, 12000.0f, 2400.0f, 0.0f, 1.2f, 2, 1 },
+        { 1, 3, 1, 0, -17.0f,  4.8f,  8.0f, 22.0f,  9.0f,  5.0f,  95.0f, false, false, false, true,  false, 30.0f, 100.0f, 2.0f, 0.0f,  1.5f, 100.0f, true,  true,  true,   140.0f,  5500.0f,  220.0f, 3.0f, 1.6f, 2, 1 },
+        { 0, 0, 2, 0, -20.0f,  2.6f, 18.0f, 16.0f, 24.0f,  4.0f, 240.0f, true,  false, false, true,  false, 10.0f, 100.0f, 2.0f, 0.0f,  2.0f,  85.0f, true,  false, false,   75.0f, 12000.0f, 2400.0f, 0.0f, 1.2f, 1, 1 },
+        { 2, 2, 1, 0, -21.0f,  3.0f, 20.0f, 18.0f, 16.0f,  8.0f, 280.0f, true,  false, false, true,  false, 30.0f, 100.0f, 2.2f, 0.0f,  3.0f,  75.0f, true,  false, false,  110.0f, 12000.0f, 2400.0f, 0.0f, 1.2f, 1, 1 },
+        { 6, 3, 1, 0, -23.0f,  6.0f,  6.0f, 30.0f, 16.0f, 10.0f,  80.0f, false, true,  false, false, false, 36.0f,  65.0f, 4.0f, 0.0f,  0.0f, 100.0f, true,  false, true,   130.0f, 12000.0f, 2200.0f, 2.5f, 1.4f, 2, 1 }
+    };
+
+    const auto& pr = presets[std::clamp(idx, 0, 19)];
     auto setVal = [this](const juce::String& id, float v) {
         if (auto* param = audioProcessor.apvts.getParameter(id))
             param->setValueNotifyingHost(param->convertTo0to1(v));
     };
 
-    setChoiceParam("channelMode", 0);
-    setVal("dryGain", 0.0f);
-    setVal("parallelMode", idx == 3 ? 1.0f : 0.0f);
-
-    if (idx == 0) { // Studio Bus Glue
-        setChoiceParam("style", 5); setVal("threshold", -18.0f); setVal("ratio", 4.0f); setVal("knee", 12.0f);
-        setVal("range", 36.0f); setVal("attack", 12.0f); setVal("hold", 8.0f); setVal("release", 140.0f);
-        setVal("autoRelease", 1.0f); setVal("character", 24.0f); setChoiceParam("colorMode", 1);
-        setVal("mix", 100.0f); setVal("wetGain", 2.4f); setVal("lookaheadOn", 1.0f); setVal("lookaheadMs", 4.0f);
-        setChoiceParam("oversampling", 1); setVal("scHpfOn", 1.0f); setVal("scHpfFreq", 95.0f); setVal("scLpfOn", 0.0f); setVal("scEqOn", 0.0f);
-    } else if (idx == 1) { // Mastering Transparent
-        setChoiceParam("style", 4); setVal("threshold", -14.5f); setVal("ratio", 2.2f); setVal("knee", 24.0f);
-        setVal("range", 12.0f); setVal("attack", 28.0f); setVal("hold", 0.0f); setVal("release", 220.0f);
-        setVal("autoRelease", 1.0f); setVal("character", 14.0f); setChoiceParam("colorMode", 3);
-        setVal("mix", 100.0f); setVal("wetGain", 1.5f); setVal("lookaheadOn", 1.0f); setVal("lookaheadMs", 2.5f);
-        setChoiceParam("oversampling", 2); setVal("scHpfOn", 1.0f); setVal("scHpfFreq", 65.0f); setVal("scLpfOn", 0.0f); setVal("scEqOn", 0.0f);
-    } else if (idx == 2) { // Vocal Forward Opto
-        setChoiceParam("style", 3); setVal("threshold", -21.0f); setVal("ratio", 3.5f); setVal("knee", 16.0f);
-        setVal("range", 24.0f); setVal("attack", 6.5f); setVal("hold", 12.0f); setVal("release", 160.0f);
-        setVal("autoRelease", 1.0f); setVal("character", 32.0f); setChoiceParam("colorMode", 2);
-        setVal("mix", 100.0f); setVal("wetGain", 4.0f); setVal("lookaheadOn", 1.0f); setVal("lookaheadMs", 3.0f);
-        setChoiceParam("oversampling", 1); setVal("scHpfOn", 1.0f); setVal("scHpfFreq", 130.0f);
-        setVal("scEqOn", 1.0f); setVal("scEqFreq", 3200.0f); setVal("scEqGain", 3.5f); setVal("scEqQ", 1.4f);
-    } else if (idx == 3) { // Parallel Drum Punch
-        setChoiceParam("style", 6); setVal("threshold", -26.0f); setVal("ratio", 10.0f); setVal("knee", 6.0f);
-        setVal("range", 42.0f); setVal("attack", 18.0f); setVal("hold", 15.0f); setVal("release", 85.0f);
-        setVal("autoRelease", 0.0f); setVal("character", 58.0f); setChoiceParam("colorMode", 1);
-        setVal("mix", 52.0f); setVal("wetGain", 6.5f); setVal("lookaheadOn", 0.0f);
-        setChoiceParam("oversampling", 2); setVal("scHpfOn", 1.0f); setVal("scHpfFreq", 110.0f);
-        setVal("scLpfOn", 1.0f); setVal("scLpfFreq", 8500.0f);
-    } else if (idx == 4) { // Zero-Overshoot Lookahead
-        setChoiceParam("style", 0); setVal("threshold", -11.0f); setVal("ratio", 100.0f); setVal("knee", 1.5f);
-        setVal("range", 24.0f); setVal("attack", 0.1f); setVal("hold", 10.0f); setVal("release", 75.0f);
-        setVal("autoRelease", 0.0f); setVal("character", 8.0f); setChoiceParam("colorMode", 0);
-        setVal("mix", 100.0f); setVal("wetGain", 3.0f); setVal("lookaheadOn", 1.0f); setVal("lookaheadMs", 10.0f);
-        setChoiceParam("oversampling", 2); setVal("scHpfOn", 0.0f); setVal("scLpfOn", 0.0f); setVal("scEqOn", 0.0f);
-    } else if (idx == 5) { // External Kick Ducking
-        setChoiceParam("style", 7); setVal("threshold", -24.0f); setVal("ratio", 8.0f); setVal("knee", 8.0f);
-        setVal("range", 30.0f); setVal("attack", 1.5f); setVal("hold", 25.0f); setVal("release", 175.0f);
-        setVal("autoRelease", 0.0f); setVal("character", 28.0f); setChoiceParam("colorMode", 2);
-        setVal("mix", 100.0f); setVal("wetGain", 2.0f); setVal("lookaheadOn", 1.0f); setVal("lookaheadMs", 2.0f);
-        setVal("scExt", 1.0f); setVal("scHpfOn", 1.0f); setVal("scHpfFreq", 45.0f); setVal("scLpfOn", 1.0f); setVal("scLpfFreq", 450.0f);
-    }
+    setChoiceParam("style", pr.style);
+    setChoiceParam("colorMode", pr.colorMode);
+    setChoiceParam("oversampling", pr.os);
+    setChoiceParam("channelMode", pr.chMode);
+    setVal("threshold", pr.thresh);
+    setVal("ratio", pr.ratio);
+    setVal("knee", pr.knee);
+    setVal("range", pr.range);
+    setVal("attack", pr.att);
+    setVal("hold", pr.hold);
+    setVal("release", pr.rel);
+    setVal("autoRelease", pr.autoRel ? 1.0f : 0.0f);
+    setVal("character", pr.charPct);
+    setVal("mix", pr.mix);
+    setVal("parallelMode", pr.parallelOn ? 1.0f : 0.0f);
+    setVal("wetGain", pr.wetGain);
+    setVal("autoGain", pr.autoGain ? 1.0f : 0.0f);
+    setVal("dryGain", pr.dryGain);
+    setVal("lookaheadOn", pr.laOn ? 1.0f : 0.0f);
+    setVal("lookaheadMs", pr.laMs);
+    setVal("stereoLink", pr.link);
+    setVal("msBalance", 0.0f);
+    setVal("scExt", pr.scExt ? 1.0f : 0.0f);
+    setVal("scHpfOn", pr.hpfOn ? 1.0f : 0.0f);
+    setVal("scHpfFreq", pr.hpfFreq);
+    setChoiceParam("scHpfSlope", pr.hpfSlope);
+    setVal("scLpfOn", pr.lpfOn ? 1.0f : 0.0f);
+    setVal("scLpfFreq", pr.lpfFreq);
+    setChoiceParam("scLpfSlope", pr.lpfSlope);
+    setVal("scEqOn", pr.eqOn ? 1.0f : 0.0f);
+    setVal("scEqFreq", pr.eqFreq);
+    setVal("scEqGain", pr.eqGain);
+    setVal("scEqQ", pr.eqQ);
 }
 
 void FidiuCompressorEditor::updateButtonStates() {
@@ -472,6 +909,145 @@ void FidiuCompressorEditor::updateButtonStates() {
     scEqFreqSlider.setEnabled(eqOn);
     scEqGainSlider.setEnabled(eqOn);
     scEqQSlider.setEnabled(eqOn);
+
+    const int lang = std::clamp(audioProcessor.uiLanguage.load(std::memory_order_relaxed), 0, 1);
+    if (lang != lastAppliedLang)
+        applyTooltipLanguage();
+}
+
+void FidiuCompressorEditor::startSignalAnalysis() {
+    if (isAnalyzing) return;
+    isAnalyzing = true;
+    analyzeFramesLeft = 36;
+    analyzeActiveFrames = 0;
+    bandAccum.fill(0.0);
+    centroidNumer = 0.0;
+    centroidDenom = 0.0;
+    crestAccum = 0.0;
+    sideAccum = 0.0;
+    analyzeBtn.setButtonText("Analyzing...");
+    analyzeBtn.setToggleState(true, juce::dontSendNotification);
+}
+
+void FidiuCompressorEditor::sampleAnalysisFrame() {
+    const int wIdx = audioProcessor.inRingIdx.load(std::memory_order_relaxed);
+    for (int i = 0; i < 4096; ++i) {
+        const int rIdx = (wIdx + i) % 4096;
+        inFftWork[static_cast<size_t>(i)] = audioProcessor.inFftRing[static_cast<size_t>(rIdx)].load(std::memory_order_relaxed);
+    }
+    std::fill(inFftWork.begin() + 4096, inFftWork.end(), 0.0f);
+    scWindow.multiplyWithWindowingTable(inFftWork.data(), 4096);
+    scFft.performFrequencyOnlyForwardTransform(inFftWork.data());
+
+    const float rmsDb = audioProcessor.currentInRmsDb.load(std::memory_order_relaxed);
+    const float crestDb = audioProcessor.currentInCrestDb.load(std::memory_order_relaxed);
+    const float sideRatio = audioProcessor.currentInSideRatio.load(std::memory_order_relaxed);
+    const double sr = audioProcessor.currentSampleRate.load(std::memory_order_relaxed);
+    const double binHz = (sr * 0.5) / 2048.0;
+
+    if (rmsDb > -60.0f) {
+        ++analyzeActiveFrames;
+        crestAccum += static_cast<double>(crestDb);
+        sideAccum += static_cast<double>(sideRatio);
+        for (int b = 1; b < 2048; ++b) {
+            const double freq = static_cast<double>(b) * binHz;
+            if (freq < 20.0 || freq > 18000.0) continue;
+            const double mag = static_cast<double>(inFftWork[static_cast<size_t>(b)]) / 1024.0;
+            const double pwr = mag * mag;
+            centroidDenom += pwr;
+            centroidNumer += pwr * freq;
+            if (freq < 85.0) bandAccum[0] += pwr;
+            else if (freq < 220.0) bandAccum[1] += pwr;
+            else if (freq < 800.0) bandAccum[2] += pwr;
+            else if (freq < 4500.0) bandAccum[3] += pwr;
+            else bandAccum[4] += pwr;
+        }
+    }
+
+    --analyzeFramesLeft;
+    if (analyzeFramesLeft <= 0)
+        finalizeSignalAnalysis();
+}
+
+void FidiuCompressorEditor::finalizeSignalAnalysis() {
+    isAnalyzing = false;
+    analyzeBtn.setButtonText("Analyze Signal");
+    analyzeBtn.setToggleState(false, juce::dontSendNotification);
+
+    if (analyzeActiveFrames == 0 || centroidDenom < 1e-12) {
+        analyzedTitle = "No Input Signal";
+        analyzedSub = "Play audio through Fidiu Compressor and click Analyze Signal.";
+        sugPresetIndices = { 0, 1, 3 };
+    } else {
+        const double invE = 1.0 / centroidDenom;
+        const double subPct = bandAccum[0] * invE;
+        const double bassPct = bandAccum[1] * invE;
+        const double lowMidPct = bandAccum[2] * invE;
+        const double highMidPct = bandAccum[3] * invE;
+        const double highPct = bandAccum[4] * invE;
+        const double lowPct = subPct + bassPct;
+        const double midPct = lowMidPct + highMidPct;
+        const double avgCrest = crestAccum / static_cast<double>(analyzeActiveFrames);
+        const double avgSide = sideAccum / static_cast<double>(analyzeActiveFrames);
+        const double centroidHz = centroidNumer * invE;
+
+        if (lowPct > 0.60 && subPct > 0.22 && avgCrest >= 11.2 && avgSide < 0.30) {
+            analyzedTitle = "Kick / Sub Punch";
+            analyzedSub = "Sub-heavy transient punch | Crest " + juce::String(avgCrest, 1) + " dB";
+            sugPresetIndices = { 10, 11, 3 };
+        } else if (lowPct > 0.54 && avgCrest < 11.2 && highPct < 0.10 && avgSide < 0.32) {
+            analyzedTitle = "Bass / Sub Bass";
+            analyzedSub = "Sustained low-end | Crest " + juce::String(avgCrest, 1) + " dB";
+            sugPresetIndices = { 12, 13, 0 };
+        } else if (highPct > 0.36 || (centroidHz > 3600.0 && lowPct < 0.16)) {
+            analyzedTitle = "Hats / High Percussion";
+            analyzedSub = "Bright high transients | " + juce::String(centroidHz / 1000.0, 1) + " kHz centroid";
+            sugPresetIndices = { 14, 4, 3 };
+        } else if (avgSide > 0.46 && avgCrest < 11.0 && midPct > 0.35) {
+            analyzedTitle = "Synths / Wide Stereo Pad";
+            analyzedSub = "Wide stereo field (" + juce::String(static_cast<int>(std::round(avgSide * 100.0))) + "% Side)";
+            sugPresetIndices = { 18, 7, 19 };
+        } else if (highMidPct > 0.28 && midPct > 0.56 && avgSide < 0.36 && subPct < 0.14) {
+            if (avgCrest >= 12.2 && highPct > 0.10) {
+                analyzedTitle = "Piano / Acoustic Keys";
+                analyzedSub = "Dynamic midrange expression | Crest " + juce::String(avgCrest, 1) + " dB";
+                sugPresetIndices = { 17, 15, 1 };
+            } else if (avgCrest < 10.6 && lowMidPct > 0.24) {
+                analyzedTitle = "Electric Guitar / Crunch";
+                analyzedSub = "Dense midrange harmonics | " + juce::String(static_cast<int>(std::round(centroidHz))) + " Hz";
+                sugPresetIndices = { 16, 15, 6 };
+            } else {
+                analyzedTitle = "Vocal / Lead Presence";
+                analyzedSub = "Presence-centered mid | Crest " + juce::String(avgCrest, 1) + " dB";
+                sugPresetIndices = { 2, 9, 15 };
+            }
+        } else if (highMidPct > 0.25 && avgCrest >= 11.2 && subPct < 0.22) {
+            analyzedTitle = avgSide >= 0.26 ? juce::String("Synths / Transient Pluck") : juce::String("Acoustic Guitar / Pluck");
+            analyzedSub = "Snappy mid-high transients | Crest " + juce::String(avgCrest, 1) + " dB";
+            sugPresetIndices = avgSide >= 0.26 ? std::array<int, 3>{ 19, 15, 18 } : std::array<int, 3>{ 15, 19, 17 };
+        } else if (avgCrest >= 11.8 && lowPct > 0.22 && (highMidPct + highPct) > 0.18) {
+            analyzedTitle = "Drum Bus / Rhythm Mix";
+            analyzedSub = "Wideband transients + sub weight | Crest " + juce::String(avgCrest, 1) + " dB";
+            sugPresetIndices = { 3, 0, 6 };
+        } else if (avgCrest < 9.2 && lowPct > 0.16 && (highMidPct + highPct) > 0.16) {
+            analyzedTitle = "Mastering / Full-Range";
+            analyzedSub = "Dense balanced spectrum | Crest " + juce::String(avgCrest, 1) + " dB";
+            sugPresetIndices = { 1, 8, 9 };
+        } else {
+            analyzedTitle = "Full Mix Bus";
+            analyzedSub = "Balanced spectrum | Crest " + juce::String(avgCrest, 1) + " dB";
+            sugPresetIndices = avgSide > 0.36 ? std::array<int, 3>{ 0, 7, 6 } : std::array<int, 3>{ 0, 6, 1 };
+        }
+    }
+
+    for (size_t i = 0; i < 3; ++i) {
+        const int itemId = std::clamp(sugPresetIndices[i], 0, 19) + 1;
+        sugPresetBtns[i].setButtonText(presetBox.getItemText(presetBox.indexOfItemId(itemId)));
+        sugPresetBtns[i].setVisible(true);
+    }
+    sugCloseBtn.setVisible(true);
+    hasSuggestion = true;
+    repaint();
 }
 
 void FidiuCompressorEditor::timerCallback() {
@@ -480,6 +1056,9 @@ void FidiuCompressorEditor::timerCallback() {
         --copyFlashFrames;
         if (copyFlashFrames == 0)
             copyAbBtn.setButtonText("Copy");
+    }
+    if (isAnalyzing) {
+        sampleAnalysisFrame();
     }
     if (displayMode == DisplayMode::Sidechain) {
         const int wIdx = audioProcessor.scRingIdx.load(std::memory_order_relaxed);
@@ -774,11 +1353,11 @@ void FidiuCompressorEditor::paintSidechainDisplay(juce::Graphics& g, juce::Recta
         g.drawEllipse(nx - 6.0f, ny - 6.0f, 12.0f, 12.0f, 2.0f);
         g.setColour(active ? juce::Colour(0xfff1f5f9) : juce::Colour(0xff94a3b8));
         g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
-        g.drawText(label, static_cast<int>(nx - 42), static_cast<int>(ny - 24), 84, 15, juce::Justification::centred, false);
+        g.drawText(label, static_cast<int>(nx - 64), static_cast<int>(ny - 24), 128, 15, juce::Justification::centred, false);
     };
-    const juce::String hpfTxt = "HPF " + (hpfF >= 1000.0f ? juce::String(hpfF / 1000.0f, 1) + "k" : juce::String(static_cast<int>(std::round(hpfF))) + "Hz");
-    const juce::String lpfTxt = "LPF " + (lpfF >= 1000.0f ? juce::String(lpfF / 1000.0f, 1) + "k" : juce::String(static_cast<int>(std::round(lpfF))) + "Hz");
-    const juce::String eqTxt  = "EQ " + (eqG >= 0.0f ? juce::String("+") : juce::String("")) + juce::String(eqG, 1) + "dB";
+    const juce::String hpfTxt = "HPF " + (hpfF >= 1000.0f ? juce::String(hpfF / 1000.0f, 1) + "k" : juce::String(static_cast<int>(std::round(hpfF))) + "Hz") + " (" + juce::String(hpfS) + "dB)";
+    const juce::String lpfTxt = "LPF " + (lpfF >= 1000.0f ? juce::String(lpfF / 1000.0f, 1) + "k" : juce::String(static_cast<int>(std::round(lpfF))) + "Hz") + " (" + juce::String(lpfS) + "dB)";
+    const juce::String eqTxt  = "EQ " + (eqG >= 0.0f ? juce::String("+") : juce::String("")) + juce::String(eqG, 1) + "dB Q" + juce::String(eqQ, 1);
     drawNode(freqToX(hpfF, plot), eqDbY(-3.0f), hpfOn ? kCyan : juce::Colour(0xff475569), hpfTxt, hpfOn);
     drawNode(freqToX(lpfF, plot), eqDbY(-3.0f), lpfOn ? kCyan : juce::Colour(0xff475569), lpfTxt, lpfOn);
     drawNode(freqToX(eqF, plot), eqDbY(eqG), eqOn ? kAmber : juce::Colour(0xff475569), eqTxt, eqOn);
@@ -898,6 +1477,14 @@ void FidiuCompressorEditor::paint(juce::Graphics& g) {
     g.setFont(juce::FontOptions(10.5f, juce::Font::bold));
     g.drawText("V1.0.2", verBadge.toNearestInt(), juce::Justification::centred, false);
 
+    // Top Toolbar vertical group separators
+    for (int dx : topDividers) {
+        g.setColour(juce::Colour(0xff3a4254));
+        g.drawVerticalLine(dx, 7.0f, 35.0f);
+        g.setColour(juce::Colours::white.withAlpha(0.07f));
+        g.drawVerticalLine(dx + 1, 7.0f, 35.0f);
+    }
+
     // Display Well radial vignette
     auto dispF = displayBounds.toFloat();
     juce::ColourGradient vig(juce::Colour(0xff181c24), dispF.getCentreX(), dispF.getCentreY(),
@@ -923,6 +1510,22 @@ void FidiuCompressorEditor::paint(juce::Graphics& g) {
     g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
     g.drawText("GR -" + juce::String(curGr, 1) + " dB", displayBounds.getRight() - 116, displayBounds.getY() + 8, 104, 18, juce::Justification::right, false);
 
+    // Signal Analysis Preset Suggestion Overlay Card
+    if (hasSuggestion) {
+        auto sRect = suggestionBounds.toFloat();
+        g.setColour(juce::Colour(0xeb141821));
+        g.fillRoundedRectangle(sRect, 5.0f);
+        g.setColour(kCyan.withAlpha(0.45f));
+        g.drawRoundedRectangle(sRect, 5.0f, 1.0f);
+
+        g.setColour(kCyan);
+        g.setFont(juce::FontOptions(11.5f, juce::Font::bold));
+        g.drawText(analyzedTitle, suggestionBounds.getX() + 10, suggestionBounds.getY() + 5, 190, 16, juce::Justification::left, false);
+        g.setColour(kMutedText);
+        g.setFont(juce::FontOptions(10.5f));
+        g.drawText(analyzedSub, suggestionBounds.getX() + 196, suggestionBounds.getY() + 5, suggestionBounds.getWidth() - 230, 16, juce::Justification::left, false);
+    }
+
     paintMeters(g, metersBounds.toFloat());
 
     // Console Gradient
@@ -934,17 +1537,35 @@ void FidiuCompressorEditor::paint(juce::Graphics& g) {
     g.drawHorizontalLine(consoleBounds.getY(), 0.0f, static_cast<float>(getWidth()));
     g.drawHorizontalLine(consoleBounds.getY() + 38, 14.0f, static_cast<float>(getWidth() - 14));
 
-    // Style / Coloriture labels
+    // Style / Coloriture divider & labels
+    g.setColour(kBorder);
+    g.drawVerticalLine(getWidth() - 330, static_cast<float>(consoleBounds.getY() + 6), static_cast<float>(consoleBounds.getY() + 32));
     g.setColour(juce::Colour(0xff7d8799));
     g.setFont(juce::FontOptions(10.0f, juce::Font::bold));
     g.drawText("STYLE", 16, consoleBounds.getY() + 10, 44, 20, juce::Justification::left);
     g.drawText("COLORITURE", getWidth() - 322, consoleBounds.getY() + 10, 76, 20, juce::Justification::right);
+
+    // Knob console group dividers
+    for (int cx : conDividers) {
+        g.setColour(juce::Colour(0xff363d4d));
+        g.drawVerticalLine(cx, static_cast<float>(consoleBounds.getY() + 54), static_cast<float>(consoleBounds.getBottom() - 12));
+        g.setColour(juce::Colours::white.withAlpha(0.06f));
+        g.drawVerticalLine(cx + 1, static_cast<float>(consoleBounds.getY() + 54), static_cast<float>(consoleBounds.getBottom() - 12));
+    }
 
     // Lower Lookahead & Sidechain Rail
     g.setColour(kBgRail);
     g.fillRect(scRailBounds);
     g.setColour(kBorder);
     g.drawHorizontalLine(scRailBounds.getY(), 0.0f, static_cast<float>(getWidth()));
+
+    // Clean vertical dividers between Lower Sidechain Rail button/knob groups
+    for (int rx : railDividers) {
+        g.setColour(juce::Colour(0xff363d4d));
+        g.drawVerticalLine(rx, static_cast<float>(scRailBounds.getY() + 18), static_cast<float>(scRailBounds.getBottom() - 18));
+        g.setColour(juce::Colours::white.withAlpha(0.06f));
+        g.drawVerticalLine(rx + 1, static_cast<float>(scRailBounds.getY() + 18), static_cast<float>(scRailBounds.getBottom() - 18));
+    }
 
     // Knob labels above each rotary slider
     g.setColour(kMutedText);
@@ -959,14 +1580,23 @@ void FidiuCompressorEditor::resized() {
     const int w = getWidth();
     const int h = getHeight();
 
-    // Top Toolbar (Preset + A/B + Copy + Reset + Level Match + Bypass)
-    presetBox.setBounds(230, 8, 184, 26);
-    bankABtn.setBounds(422, 8, 32, 26);
-    bankBBtn.setBounds(455, 8, 32, 26);
-    copyAbBtn.setBounds(493, 8, 56, 26);
-    resetBtn.setBounds(555, 8, 52, 26);
+    // Top Toolbar (< Preset > | A B Copy Reset | Analyze Signal ... Level Match | Bypass)
+    topDividers[0] = 224;
+    presetPrevBtn.setBounds(230, 8, 22, 26);
+    presetBox.setBounds(253, 8, 158, 26);
+    presetNextBtn.setBounds(412, 8, 22, 26);
+    topDividers[1] = 439;
+    bankABtn.setBounds(445, 8, 28, 26);
+    bankBBtn.setBounds(474, 8, 28, 26);
+    copyAbBtn.setBounds(505, 8, 50, 26);
+    resetBtn.setBounds(558, 8, 46, 26);
+    topDividers[2] = 609;
+    analyzeBtn.setBounds(615, 8, 102, 26);
 
-    levelMatchBtn.setBounds(w - 196, 8, 96, 26);
+    topDividers[3] = w - 260;
+    langBtn.setBounds(w - 252, 8, 48, 26);
+    levelMatchBtn.setBounds(w - 198, 8, 94, 26);
+    topDividers[4] = w - 98;
     bypassBtn.setBounds(w - 92, 8, 78, 26);
 
     const int topH = 42;
@@ -984,6 +1614,14 @@ void FidiuCompressorEditor::resized() {
     dispModeBtn.setBounds(50, topH + 8, 66, 22);
     scModeBtn.setBounds(118, topH + 8, 98, 22);
     kneeToggleBtn.setBounds(220, topH + 8, 52, 22);
+
+    // Signal Suggestion Strip (top-right inside display, below LA/GR readout)
+    const int sugW = std::min(510, displayBounds.getWidth() - 60);
+    suggestionBounds = { displayBounds.getRight() - sugW - 14, topH + 34, sugW, 56 };
+    const int btnW = (sugW - 46) / 3;
+    for (int i = 0; i < 3; ++i)
+        sugPresetBtns[static_cast<size_t>(i)].setBounds(suggestionBounds.getX() + 10 + i * (btnW + 6), suggestionBounds.getY() + 26, btnW, 22);
+    sugCloseBtn.setBounds(suggestionBounds.getRight() - 26, suggestionBounds.getY() + 4, 20, 18);
 
     // Style & Coloriture Sub-Bar
     const int barY = consoleBounds.getY() + 8;
@@ -1016,10 +1654,14 @@ void FidiuCompressorEditor::resized() {
     autoGainBtn.setBounds(16 + colW * 9 + colW / 2 - 36, knobY + 94, 72, 18);
     dryGainSlider.setBounds(16 + colW * 10, knobY + 4, colW, 88);
 
+    conDividers[0] = 16 + colW * 1;
+    conDividers[1] = 16 + colW * 4;
+    conDividers[2] = 16 + colW * 7;
+
     // Integrated Lower Lookahead, Mid/Side/Stereo & Sidechain Rail
     const int ry = scRailBounds.getY() + 18;
-    const int extraGap = std::clamp((w - 980) / 5, 0, 42);
-    int rx = 14;
+    const int extraGap = std::clamp((w - 1010) / 4, 0, 42);
+    int rx = 16;
     lookaheadBtn.setBounds(rx, ry + 2, 72, 20);
     for (int i = 0; i < 3; ++i)
         osBtns[static_cast<size_t>(i)].setBounds(rx + i * 24, ry + 28, 23, 18);
@@ -1031,27 +1673,35 @@ void FidiuCompressorEditor::resized() {
     // Stereo / Mid / Side mode selector
     for (int i = 0; i < 3; ++i)
         chModeBtns[static_cast<size_t>(i)].setBounds(rx, ry + i * 22, 54, 19);
-    rx += 60 + extraGap;
+    rx += 58;
+    railDividers[0] = rx + 6 + extraGap / 2;
+    rx += 12 + extraGap;
 
     // Sidechain routing
     scIntBtn.setBounds(rx, ry + 2, 47, 20);
     scExtBtn.setBounds(rx + 49, ry + 2, 47, 20);
     scAudBtn.setBounds(rx, ry + 28, 96, 20);
-    rx += 102 + extraGap;
+    rx += 98;
+    railDividers[1] = rx + 6 + extraGap / 2;
+    rx += 12 + extraGap;
 
-    // HPF (23px each for "6", "12", "24", "48")
+    // HPF
     scHpfBtn.setBounds(rx, ry + 2, 95, 20);
     for (int i = 0; i < 4; ++i)
         hpfSlopeBtns[static_cast<size_t>(i)].setBounds(rx + i * 24, ry + 28, 23, 19);
     rx += 100;
-    scHpfSlider.setBounds(rx, ry, 54, 74); rx += 58 + extraGap;
+    scHpfSlider.setBounds(rx, ry, 54, 74); rx += 56;
+    railDividers[2] = rx + 6 + extraGap / 2;
+    rx += 12 + extraGap;
 
-    // LPF (23px each for "6", "12", "24", "48")
+    // LPF
     scLpfBtn.setBounds(rx, ry + 2, 95, 20);
     for (int i = 0; i < 4; ++i)
         lpfSlopeBtns[static_cast<size_t>(i)].setBounds(rx + i * 24, ry + 28, 23, 19);
     rx += 100;
-    scLpfSlider.setBounds(rx, ry, 54, 74); rx += 58 + extraGap;
+    scLpfSlider.setBounds(rx, ry, 54, 74); rx += 56;
+    railDividers[3] = rx + 6 + extraGap / 2;
+    rx += 12 + extraGap;
 
     // SC Bell EQ
     scEqBtn.setBounds(rx, ry + 14, 54, 22); rx += 58;
@@ -1122,4 +1772,53 @@ void FidiuCompressorEditor::mouseDrag(const juce::MouseEvent& e) {
 
 void FidiuCompressorEditor::mouseUp(const juce::MouseEvent&) {
     dragTarget = DragTarget::None;
+}
+
+void FidiuCompressorEditor::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) {
+    if (displayMode != DisplayMode::Sidechain || !displayBounds.contains(e.getPosition())) {
+        AudioProcessorEditor::mouseWheelMove(e, wheel);
+        return;
+    }
+
+    const float dir = (std::abs(wheel.deltaY) >= std::abs(wheel.deltaX)) ? wheel.deltaY : wheel.deltaX;
+    if (std::abs(dir) < 0.0001f)
+        return;
+
+    auto area = displayBounds.toFloat();
+    auto plot = area.reduced(44.0f, 20.0f).withRight(area.getRight() - 16.0f).withBottom(area.getBottom() - 26.0f);
+    auto eqDbY = [&](float db) { return plot.getY() + ((24.0f - std::clamp(db, -36.0f, 24.0f)) / 60.0f) * plot.getHeight(); };
+
+    const float hpfX = freqToX(audioProcessor.apvts.getRawParameterValue("scHpfFreq")->load(), plot);
+    const float lpfX = freqToX(audioProcessor.apvts.getRawParameterValue("scLpfFreq")->load(), plot);
+    const float eqX = freqToX(audioProcessor.apvts.getRawParameterValue("scEqFreq")->load(), plot);
+    const float eqY = eqDbY(audioProcessor.apvts.getRawParameterValue("scEqGain")->load());
+    const float baseY = eqDbY(-3.0f);
+
+    const float dEq = e.position.getDistanceFrom({ eqX, eqY });
+    const float dHpf = e.position.getDistanceFrom({ hpfX, baseY });
+    const float dLpf = e.position.getDistanceFrom({ lpfX, baseY });
+
+    auto setValGesture = [this](const juce::String& id, float v) {
+        if (auto* param = audioProcessor.apvts.getParameter(id)) {
+            param->beginChangeGesture();
+            param->setValueNotifyingHost(param->convertTo0to1(v));
+            param->endChangeGesture();
+        }
+    };
+
+    if (dHpf < 38.0f && dHpf < dEq) {
+        setValGesture("scHpfOn", 1.0f);
+        const int cur = getChoiceParam("scHpfSlope");
+        setChoiceParam("scHpfSlope", std::clamp(cur + (dir > 0.0f ? 1 : -1), 0, 3));
+    } else if (dLpf < 38.0f && dLpf < dEq) {
+        setValGesture("scLpfOn", 1.0f);
+        const int cur = getChoiceParam("scLpfSlope");
+        setChoiceParam("scLpfSlope", std::clamp(cur + (dir > 0.0f ? 1 : -1), 0, 3));
+    } else {
+        setValGesture("scEqOn", 1.0f);
+        const float curQ = audioProcessor.apvts.getRawParameterValue("scEqQ")->load();
+        const float factor = e.mods.isShiftDown() ? (dir > 0.0f ? 1.04f : 1.0f / 1.04f)
+                                                  : (dir > 0.0f ? 1.14f : 1.0f / 1.14f);
+        setValGesture("scEqQ", std::clamp(curQ * factor, 0.3f, 8.0f));
+    }
 }

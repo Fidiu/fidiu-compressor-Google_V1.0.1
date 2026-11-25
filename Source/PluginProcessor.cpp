@@ -15,6 +15,7 @@ FidiuCompressorProcessor::FidiuCompressorProcessor()
     }
     for (int i = 0; i < kScFftSize; ++i) {
         scFftRing[static_cast<size_t>(i)].store(0.0f, std::memory_order_relaxed);
+        inFftRing[static_cast<size_t>(i)].store(0.0f, std::memory_order_relaxed);
     }
     bankAValues = captureCurrentParams();
     bankBValues = bankAValues;
@@ -238,6 +239,10 @@ void FidiuCompressorProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
         dsp.delayL[dsp.writeIdx] = xL;
         dsp.delayR[dsp.writeIdx] = xR;
 
+        const int rawIdx = inRingIdx.load(std::memory_order_relaxed);
+        inFftRing[static_cast<size_t>(rawIdx)].store(0.5f * (xL + xR), std::memory_order_relaxed);
+        inRingIdx.store((rawIdx + 1) % kScFftSize, std::memory_order_relaxed);
+
         const size_t readIdx = (dsp.writeIdx + bufCap - static_cast<size_t>(laSamples)) % bufCap;
         const float dL = dsp.delayL[readIdx];
         const float dR = dsp.delayR[readIdx];
@@ -377,6 +382,12 @@ void FidiuCompressorProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
 
         dsp.writeIdx = (dsp.writeIdx + 1) % bufCap;
 
+        const float midRaw = (dL + dR) * 0.70710678f;
+        const float sideRaw = (dL - dR) * 0.70710678f;
+        blockInSumSq += 0.5f * (dL * dL + dR * dR);
+        blockInMidSq += midRaw * midRaw;
+        blockInSideSq += sideRaw * sideRaw;
+
         blockPeakInL = std::max(blockPeakInL, std::abs(dL));
         blockPeakInR = std::max(blockPeakInR, std::abs(dR));
         blockPeakOutL = std::max(blockPeakOutL, std::abs(outL));
@@ -393,12 +404,20 @@ void FidiuCompressorProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
             const float maxInDb = std::max(inDbL, inDbR);
             const float maxOutDb = std::max(outDbL, outDbR);
 
+            const float invN = 1.0f / static_cast<float>(std::max(1, telemetrySamples));
+            const float inRmsDb = juce::Decibels::gainToDecibels(std::sqrt(blockInSumSq * invN), -96.0f);
+            const float inCrestDb = std::max(0.0f, maxInDb - inRmsDb);
+            const float inSideRatio = std::sqrt(blockInSideSq * invN) / std::max(1e-6f, std::sqrt(blockInMidSq * invN));
+
             currentInDbL.store(inDbL, std::memory_order_relaxed);
             currentInDbR.store(inDbR, std::memory_order_relaxed);
             currentOutDbL.store(outDbL, std::memory_order_relaxed);
             currentOutDbR.store(outDbR, std::memory_order_relaxed);
             currentGrDb.store(blockMaxGr, std::memory_order_relaxed);
             currentScDb.store(scDb, std::memory_order_relaxed);
+            currentInRmsDb.store(inRmsDb, std::memory_order_relaxed);
+            currentInCrestDb.store(inCrestDb, std::memory_order_relaxed);
+            currentInSideRatio.store(inSideRatio, std::memory_order_relaxed);
 
             ++peakDecayCounter;
             float pIn = peakHoldInDb.load(std::memory_order_relaxed);
@@ -419,6 +438,7 @@ void FidiuCompressorProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
 
             telemetrySamples = 0;
             blockPeakInL = blockPeakInR = blockPeakOutL = blockPeakOutR = blockPeakSc = blockMaxGr = 0.0f;
+            blockInSumSq = blockInMidSq = blockInSideSq = 0.0f;
         }
     }
 }
@@ -430,6 +450,7 @@ juce::AudioProcessorEditor* FidiuCompressorProcessor::createEditor() {
 void FidiuCompressorProcessor::getStateInformation(juce::MemoryBlock& destData) {
     juce::XmlElement root("FIDIU_STATE");
     root.setAttribute("activeBank", activeBank);
+    root.setAttribute("uiLang", uiLanguage.load(std::memory_order_relaxed));
     auto state = apvts.copyState();
     root.addChildElement(state.createXml().release());
 
@@ -450,6 +471,7 @@ void FidiuCompressorProcessor::setStateInformation(const void* data, int sizeInB
 
     if (xml->hasTagName("FIDIU_STATE")) {
         activeBank = std::clamp(xml->getIntAttribute("activeBank", 0), 0, 1);
+        uiLanguage.store(std::clamp(xml->getIntAttribute("uiLang", 0), 0, 1), std::memory_order_relaxed);
         if (auto* paramsEl = xml->getChildByName(apvts.state.getType().toString()))
             apvts.replaceState(juce::ValueTree::fromXml(*paramsEl));
         auto readBank = [](const juce::XmlElement& parent, const char* name, std::vector<float>& dst) {

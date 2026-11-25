@@ -10,9 +10,11 @@ public:
                           float rotaryEndAngle, juce::Slider&) override;
     void drawLabel(juce::Graphics&, juce::Label&) override;
     void drawButtonText(juce::Graphics&, juce::TextButton&, bool shouldDrawButtonAsHighlighted, bool shouldDrawButtonAsDown) override;
+    juce::Rectangle<int> getTooltipBounds(const juce::String& tipText, juce::Point<int> screenPos, juce::Rectangle<int> parentArea) override;
+    void drawTooltip(juce::Graphics&, const juce::String& text, int width, int height) override;
 };
 
-class FidiuCompressorEditor : public juce::AudioProcessorEditor, private juce::Timer {
+class FidiuCompressorEditor : public juce::AudioProcessorEditor, public juce::TooltipClient, private juce::Timer {
 public:
     explicit FidiuCompressorEditor(FidiuCompressorProcessor&);
     ~FidiuCompressorEditor() override;
@@ -22,17 +24,24 @@ public:
     void mouseDown(const juce::MouseEvent&) override;
     void mouseDrag(const juce::MouseEvent&) override;
     void mouseUp(const juce::MouseEvent&) override;
+    void mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+    juce::String getTooltip() override;
 
 private:
     void timerCallback() override;
     void setChoiceParam(const juce::String& paramId, int index);
     int getChoiceParam(const juce::String& paramId) const;
     void applyPreset(int index);
+    void stepPreset(int dir);
+    void startSignalAnalysis();
+    void sampleAnalysisFrame();
+    void finalizeSignalAnalysis();
     void paintWaveformDisplay(juce::Graphics&, juce::Rectangle<float> area);
     void paintSidechainDisplay(juce::Graphics&, juce::Rectangle<float> area);
     void paintKneeOverlay(juce::Graphics&, juce::Rectangle<float> area);
     void paintMeters(juce::Graphics&, juce::Rectangle<float> area);
     void updateButtonStates();
+    void applyTooltipLanguage();
 
     FidiuCompressorProcessor& audioProcessor;
     FidiuLookAndFeel fidiuLook;
@@ -43,20 +52,43 @@ private:
     DragTarget dragTarget = DragTarget::None;
     bool showKnee = true;
     int copyFlashFrames = 0;
+    int lastAppliedLang = -1;
+
+    bool isAnalyzing = false;
+    bool hasSuggestion = false;
+    int analyzeFramesLeft = 0;
+    int analyzeActiveFrames = 0;
+    std::array<double, 5> bandAccum {};
+    double centroidNumer = 0.0, centroidDenom = 0.0;
+    double crestAccum = 0.0, sideAccum = 0.0;
+    juce::String analyzedTitle, analyzedSub;
+    std::array<int, 3> sugPresetIndices { 0, 1, 3 };
 
     juce::Rectangle<int> displayBounds;
     juce::Rectangle<int> metersBounds;
     juce::Rectangle<int> consoleBounds;
     juce::Rectangle<int> scRailBounds;
+    juce::Rectangle<int> suggestionBounds;
+    std::array<int, 5> topDividers {};
+    std::array<int, 3> conDividers {};
+    std::array<int, 4> railDividers {};
 
     // Top bar controls
+    juce::TextButton presetPrevBtn { "<" };
     juce::ComboBox presetBox;
+    juce::TextButton presetNextBtn { ">" };
     juce::TextButton bankABtn { "A" };
     juce::TextButton bankBBtn { "B" };
     juce::TextButton copyAbBtn { "Copy" };
     juce::TextButton resetBtn { "Reset" };
+    juce::TextButton analyzeBtn { "Analyze Signal" };
+    juce::TextButton langBtn { "EN" };
     juce::TextButton levelMatchBtn { "Level Match" };
     juce::TextButton bypassBtn { "Bypass" };
+
+    // Analyzer suggestion controls
+    std::array<juce::TextButton, 3> sugPresetBtns;
+    juce::TextButton sugCloseBtn { "x" };
 
     // Display mode buttons
     juce::TextButton dispModeBtn { "Display" };
@@ -104,7 +136,10 @@ private:
     juce::dsp::FFT scFft { 12 };
     juce::dsp::WindowingFunction<float> scWindow { 4096, juce::dsp::WindowingFunction<float>::hann };
     std::array<float, 8192> fftWork {};
+    std::array<float, 8192> inFftWork {};
     std::array<float, 2048> smoothedBins {};
+
+    juce::TooltipWindow tooltipWindow { this, 3000 };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(FidiuCompressorEditor)
 };
