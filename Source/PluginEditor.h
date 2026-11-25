@@ -9,6 +9,7 @@ public:
                           float sliderPosProportional, float rotaryStartAngle,
                           float rotaryEndAngle, juce::Slider&) override;
     void drawLabel(juce::Graphics&, juce::Label&) override;
+    void drawButtonText(juce::Graphics&, juce::TextButton&, bool shouldDrawButtonAsHighlighted, bool shouldDrawButtonAsDown) override;
 };
 
 class FidiuCompressorEditor : public juce::AudioProcessorEditor, private juce::Timer {
@@ -41,6 +42,7 @@ private:
     DisplayMode displayMode = DisplayMode::Dynamics;
     DragTarget dragTarget = DragTarget::None;
     bool showKnee = true;
+    int copyFlashFrames = 0;
 
     juce::Rectangle<int> displayBounds;
     juce::Rectangle<int> metersBounds;
@@ -49,6 +51,11 @@ private:
 
     // Top bar controls
     juce::ComboBox presetBox;
+    juce::TextButton bankABtn { "A" };
+    juce::TextButton bankBBtn { "B" };
+    juce::TextButton copyAbBtn { "Copy" };
+    juce::TextButton resetBtn { "Reset" };
+    juce::TextButton levelMatchBtn { "Level Match" };
     juce::TextButton bypassBtn { "Bypass" };
 
     // Display mode buttons
@@ -60,12 +67,14 @@ private:
     std::array<juce::TextButton, 8> styleBtns;
     std::array<juce::TextButton, 4> colorBtns;
 
-    // Oversampling & Slope & Sidechain buttons
+    // Oversampling, Channel Mode & Slope & Sidechain buttons
     std::array<juce::TextButton, 3> osBtns;
+    std::array<juce::TextButton, 3> chModeBtns;
     std::array<juce::TextButton, 4> hpfSlopeBtns;
     std::array<juce::TextButton, 4> lpfSlopeBtns;
 
     juce::TextButton autoRelBtn { "Auto" };
+    juce::TextButton parallelBtn { "Parallel" };
     juce::TextButton autoGainBtn { "Auto Gain" };
     juce::TextButton lookaheadBtn { "Lookahead" };
     juce::TextButton scIntBtn { "Int SC" };
@@ -78,7 +87,7 @@ private:
     // Rotary knobs
     juce::Slider threshSlider, ratioSlider, kneeSlider, rangeSlider;
     juce::Slider attackSlider, holdSlider, releaseSlider;
-    juce::Slider charSlider, mixSlider, gainSlider;
+    juce::Slider charSlider, mixSlider, gainSlider, dryGainSlider;
     juce::Slider lookaheadSlider, linkSlider, msSlider;
     juce::Slider scHpfSlider, scLpfSlider, scEqFreqSlider, scEqGainSlider, scEqQSlider;
 
@@ -86,16 +95,16 @@ private:
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>
         threshAtt, ratioAtt, kneeAtt, rangeAtt, attackAtt, holdAtt, releaseAtt,
-        charAtt, mixAtt, gainAtt, laAtt, linkAtt, msAtt,
+        charAtt, mixAtt, gainAtt, dryGainAtt, laAtt, linkAtt, msAtt,
         scHpfAtt, scLpfAtt, scEqFreqAtt, scEqGainAtt, scEqQAtt;
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>
-        bypassAtt, autoRelAtt, autoGainAtt, lookaheadAtt, scAudAtt, scHpfAttBtn, scLpfAttBtn, scEqAttBtn;
+        levelMatchAtt, bypassAtt, autoRelAtt, parallelAtt, autoGainAtt, lookaheadAtt, scAudAtt, scHpfAttBtn, scLpfAttBtn, scEqAttBtn;
 
-    juce::dsp::FFT scFft { 10 };
-    juce::dsp::WindowingFunction<float> scWindow { 1024, juce::dsp::WindowingFunction<float>::hann };
-    std::array<float, 2048> fftWork {};
-    std::array<float, 512> smoothedBins {};
+    juce::dsp::FFT scFft { 12 };
+    juce::dsp::WindowingFunction<float> scWindow { 4096, juce::dsp::WindowingFunction<float>::hann };
+    std::array<float, 8192> fftWork {};
+    std::array<float, 2048> smoothedBins {};
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(FidiuCompressorEditor)
 };

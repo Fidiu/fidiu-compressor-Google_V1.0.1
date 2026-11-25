@@ -4,7 +4,7 @@
 [Setup]
 AppId={{8D6B4A3E-1C42-4B7A-9F2C-F1D10C030001}
 AppName=Fidiu Compressor
-AppVersion=1.0.0
+AppVersion=1.0.2
 AppPublisher=Fidiu Audio
 DefaultDirName={commoncf64}\VST3\Fidiu Compressor.vst3
 DisableDirPage=yes

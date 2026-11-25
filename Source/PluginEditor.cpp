@@ -76,9 +76,19 @@ FidiuLookAndFeel::FidiuLookAndFeel() {
 }
 
 void FidiuLookAndFeel::drawLabel(juce::Graphics& g, juce::Label& label) {
-    g.setColour(juce::Colour(0xffdce3ee));
-    g.setFont(juce::FontOptions(10.5f));
+    g.setColour(juce::Colour(0xffe2e8f0));
+    g.setFont(juce::FontOptions(11.0f));
     g.drawText(label.getText(), label.getLocalBounds(), juce::Justification::centred, false);
+}
+
+void FidiuLookAndFeel::drawButtonText(juce::Graphics& g, juce::TextButton& button, bool, bool) {
+    g.setFont(juce::FontOptions(11.0f));
+    g.setColour(button.findColour(button.getToggleState()
+                                      ? juce::TextButton::textColourOnId
+                                      : juce::TextButton::textColourOffId)
+                      .withMultipliedAlpha(button.isEnabled() ? 1.0f : 0.5f));
+    auto area = button.getLocalBounds().reduced(2, 1);
+    g.drawFittedText(button.getButtonText(), area, juce::Justification::centred, 1, 0.85f);
 }
 
 void FidiuLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int width, int height,
@@ -152,9 +162,9 @@ FidiuCompressorEditor::FidiuCompressorEditor(FidiuCompressorProcessor& p)
     : AudioProcessorEditor(&p), audioProcessor(p)
 {
     setLookAndFeel(&fidiuLook);
-    setSize(1160, 680);
+    setSize(1220, 700);
     setResizable(true, true);
-    setResizeLimits(960, 580, 1600, 960);
+    setResizeLimits(1000, 600, 1680, 980);
 
     smoothedBins.fill(-90.0f);
 
@@ -177,10 +187,29 @@ FidiuCompressorEditor::FidiuCompressorEditor(FidiuCompressorProcessor& p)
         addAndMakeVisible(b);
     };
 
+    styleBtn(bankABtn, juce::Colour(0xff164e63));
+    styleBtn(bankBBtn, kOrange.darker(0.2f));
+    styleBtn(copyAbBtn, juce::Colour(0xff2c3342));
+    styleBtn(resetBtn, juce::Colour(0xff2c3342));
+    styleBtn(levelMatchBtn, juce::Colour(0xff164e63));
     styleBtn(bypassBtn, kAmber.darker(0.35f));
     styleBtn(dispModeBtn, juce::Colour(0xff2c3342));
     styleBtn(scModeBtn, juce::Colour(0xff164e63));
     styleBtn(kneeToggleBtn, juce::Colour(0xff2c3342));
+
+    bankABtn.setClickingTogglesState(false);
+    bankBBtn.setClickingTogglesState(false);
+    copyAbBtn.setClickingTogglesState(false);
+    resetBtn.setClickingTogglesState(false);
+
+    bankABtn.onClick = [this] { audioProcessor.selectBank(0); updateButtonStates(); repaint(); };
+    bankBBtn.onClick = [this] { audioProcessor.selectBank(1); updateButtonStates(); repaint(); };
+    copyAbBtn.onClick = [this] {
+        audioProcessor.copyActiveBankToOther();
+        copyAbBtn.setButtonText(audioProcessor.getActiveBank() == 0 ? "A -> B" : "B -> A");
+        copyFlashFrames = 55;
+    };
+    resetBtn.onClick = [this] { audioProcessor.resetToDefault(); updateButtonStates(); repaint(); };
 
     dispModeBtn.setClickingTogglesState(false);
     scModeBtn.setClickingTogglesState(false);
@@ -213,6 +242,15 @@ FidiuCompressorEditor::FidiuCompressorEditor(FidiuCompressorProcessor& p)
         osBtns[static_cast<size_t>(i)].onClick = [this, i] { setChoiceParam("oversampling", i); };
     }
 
+    static const char* chModeNames[3] = { "Stereo", "Mid", "Side" };
+    const std::array<juce::Colour, 3> chModeCols = { juce::Colour(0xff2c3342), juce::Colour(0xff164e63), kOrange.darker(0.2f) };
+    for (int i = 0; i < 3; ++i) {
+        styleBtn(chModeBtns[static_cast<size_t>(i)], chModeCols[static_cast<size_t>(i)]);
+        chModeBtns[static_cast<size_t>(i)].setButtonText(chModeNames[i]);
+        chModeBtns[static_cast<size_t>(i)].setClickingTogglesState(false);
+        chModeBtns[static_cast<size_t>(i)].onClick = [this, i] { setChoiceParam("channelMode", i); };
+    }
+
     static const char* slopeNames[4] = { "6", "12", "24", "48" };
     for (int i = 0; i < 4; ++i) {
         styleBtn(hpfSlopeBtns[static_cast<size_t>(i)], juce::Colour(0xff164e63));
@@ -227,6 +265,7 @@ FidiuCompressorEditor::FidiuCompressorEditor(FidiuCompressorProcessor& p)
     }
 
     styleBtn(autoRelBtn, juce::Colour(0xff164e63));
+    styleBtn(parallelBtn, kOrange.darker(0.2f));
     styleBtn(autoGainBtn, juce::Colour(0xff164e63));
     styleBtn(lookaheadBtn, juce::Colour(0xff164e63));
     styleBtn(scIntBtn, juce::Colour(0xff2c3342));
@@ -270,6 +309,11 @@ FidiuCompressorEditor::FidiuCompressorEditor(FidiuCompressorProcessor& p)
     initKnob(charSlider, "DRIVE", kAmber, "%");
     initKnob(mixSlider, "MIX", kSilver, "%");
     initKnob(gainSlider, "WET GAIN", kCyan, " dB", true);
+    initKnob(dryGainSlider, "DRY GAIN", kSilver, " dB", true);
+    dryGainSlider.textFromValueFunction = [](double v) {
+        if (v <= -35.8) return juce::String("-inf dB");
+        return (v >= 0.0 ? juce::String("+") : juce::String("")) + juce::String(v, 1) + " dB";
+    };
 
     initKnob(lookaheadSlider, "LOOKAHEAD", kCyan, " ms");
     initKnob(linkSlider, "LINK", kSilver, "%");
@@ -290,6 +334,7 @@ FidiuCompressorEditor::FidiuCompressorEditor(FidiuCompressorProcessor& p)
     charAtt      = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.apvts, "character", charSlider);
     mixAtt       = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.apvts, "mix", mixSlider);
     gainAtt      = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.apvts, "wetGain", gainSlider);
+    dryGainAtt   = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.apvts, "dryGain", dryGainSlider);
     laAtt        = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.apvts, "lookaheadMs", lookaheadSlider);
     linkAtt      = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.apvts, "stereoLink", linkSlider);
     msAtt        = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.apvts, "msBalance", msSlider);
@@ -299,14 +344,16 @@ FidiuCompressorEditor::FidiuCompressorEditor(FidiuCompressorProcessor& p)
     scEqGainAtt  = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.apvts, "scEqGain", scEqGainSlider);
     scEqQAtt     = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.apvts, "scEqQ", scEqQSlider);
 
-    bypassAtt    = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.apvts, "bypass", bypassBtn);
-    autoRelAtt   = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.apvts, "autoRelease", autoRelBtn);
-    autoGainAtt  = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.apvts, "autoGain", autoGainBtn);
-    lookaheadAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.apvts, "lookaheadOn", lookaheadBtn);
-    scAudAtt     = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.apvts, "scAudition", scAudBtn);
-    scHpfAttBtn  = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.apvts, "scHpfOn", scHpfBtn);
-    scLpfAttBtn  = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.apvts, "scLpfOn", scLpfBtn);
-    scEqAttBtn   = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.apvts, "scEqOn", scEqBtn);
+    levelMatchAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.apvts, "levelMatch", levelMatchBtn);
+    bypassAtt     = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.apvts, "bypass", bypassBtn);
+    autoRelAtt    = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.apvts, "autoRelease", autoRelBtn);
+    parallelAtt   = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.apvts, "parallelMode", parallelBtn);
+    autoGainAtt   = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.apvts, "autoGain", autoGainBtn);
+    lookaheadAtt  = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.apvts, "lookaheadOn", lookaheadBtn);
+    scAudAtt      = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.apvts, "scAudition", scAudBtn);
+    scHpfAttBtn   = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.apvts, "scHpfOn", scHpfBtn);
+    scLpfAttBtn   = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.apvts, "scLpfOn", scLpfBtn);
+    scEqAttBtn    = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.apvts, "scEqOn", scEqBtn);
 
     updateButtonStates();
     startTimerHz(60);
@@ -335,6 +382,10 @@ void FidiuCompressorEditor::applyPreset(int idx) {
         if (auto* param = audioProcessor.apvts.getParameter(id))
             param->setValueNotifyingHost(param->convertTo0to1(v));
     };
+
+    setChoiceParam("channelMode", 0);
+    setVal("dryGain", 0.0f);
+    setVal("parallelMode", idx == 3 ? 1.0f : 0.0f);
 
     if (idx == 0) { // Studio Bus Glue
         setChoiceParam("style", 5); setVal("threshold", -18.0f); setVal("ratio", 4.0f); setVal("knee", 12.0f);
@@ -378,6 +429,10 @@ void FidiuCompressorEditor::applyPreset(int idx) {
 }
 
 void FidiuCompressorEditor::updateButtonStates() {
+    const int bank = audioProcessor.getActiveBank();
+    bankABtn.setToggleState(bank == 0, juce::dontSendNotification);
+    bankBBtn.setToggleState(bank == 1, juce::dontSendNotification);
+
     dispModeBtn.setToggleState(displayMode == DisplayMode::Dynamics, juce::dontSendNotification);
     scModeBtn.setToggleState(displayMode == DisplayMode::Sidechain, juce::dontSendNotification);
     kneeToggleBtn.setVisible(displayMode == DisplayMode::Dynamics);
@@ -393,6 +448,11 @@ void FidiuCompressorEditor::updateButtonStates() {
     const int activeOs = getChoiceParam("oversampling");
     for (int i = 0; i < 3; ++i)
         osBtns[static_cast<size_t>(i)].setToggleState(i == activeOs, juce::dontSendNotification);
+
+    const int activeCh = getChoiceParam("channelMode");
+    for (int i = 0; i < 3; ++i)
+        chModeBtns[static_cast<size_t>(i)].setToggleState(i == activeCh, juce::dontSendNotification);
+    msSlider.setEnabled(activeCh == 0);
 
     const int activeHpfSlope = getChoiceParam("scHpfSlope");
     const int activeLpfSlope = getChoiceParam("scLpfSlope");
@@ -416,17 +476,22 @@ void FidiuCompressorEditor::updateButtonStates() {
 
 void FidiuCompressorEditor::timerCallback() {
     updateButtonStates();
+    if (copyFlashFrames > 0) {
+        --copyFlashFrames;
+        if (copyFlashFrames == 0)
+            copyAbBtn.setButtonText("Copy");
+    }
     if (displayMode == DisplayMode::Sidechain) {
         const int wIdx = audioProcessor.scRingIdx.load(std::memory_order_relaxed);
-        for (int i = 0; i < 1024; ++i) {
-            const int rIdx = (wIdx + i) % 1024;
+        for (int i = 0; i < 4096; ++i) {
+            const int rIdx = (wIdx + i) % 4096;
             fftWork[static_cast<size_t>(i)] = audioProcessor.scFftRing[static_cast<size_t>(rIdx)].load(std::memory_order_relaxed);
         }
-        std::fill(fftWork.begin() + 1024, fftWork.end(), 0.0f);
-        scWindow.multiplyWithWindowingTable(fftWork.data(), 1024);
+        std::fill(fftWork.begin() + 4096, fftWork.end(), 0.0f);
+        scWindow.multiplyWithWindowingTable(fftWork.data(), 4096);
         scFft.performFrequencyOnlyForwardTransform(fftWork.data());
-        for (int b = 0; b < 512; ++b) {
-            const float magDb = juce::Decibels::gainToDecibels(fftWork[static_cast<size_t>(b)] / 256.0f, -96.0f);
+        for (int b = 0; b < 2048; ++b) {
+            const float magDb = juce::Decibels::gainToDecibels(fftWork[static_cast<size_t>(b)] / 1024.0f, -96.0f);
             smoothedBins[static_cast<size_t>(b)] = smoothedBins[static_cast<size_t>(b)] * 0.72f + magDb * 0.28f;
         }
     }
@@ -439,14 +504,14 @@ void FidiuCompressorEditor::paintKneeOverlay(juce::Graphics& g, juce::Rectangle<
     g.setColour(juce::Colours::white.withAlpha(0.11f));
     g.drawRoundedRectangle(box, 5.0f, 1.0f);
 
-    g.setColour(kMutedText);
-    g.setFont(juce::FontOptions(10.0f, juce::Font::bold));
-    g.drawText("KNEE", juce::Rectangle<float>(box.getX() + 7.0f, box.getY() + 3.0f, 45.0f, 14.0f), juce::Justification::left, false);
+    g.setColour(juce::Colour(0xffaab4c5));
+    g.setFont(juce::FontOptions(11.5f, juce::Font::bold));
+    g.drawText("KNEE", juce::Rectangle<float>(box.getX() + 8.0f, box.getY() + 3.0f, 52.0f, 15.0f), juce::Justification::left, false);
 
     const float ratio = audioProcessor.apvts.getRawParameterValue("ratio")->load();
     g.setColour(kSilver);
     g.drawText(ratio >= 99.0f ? juce::String("inf:1") : juce::String(ratio, 1) + ":1",
-               juce::Rectangle<float>(box.getRight() - 56.0f, box.getY() + 3.0f, 50.0f, 14.0f), juce::Justification::right, false);
+               juce::Rectangle<float>(box.getRight() - 62.0f, box.getY() + 3.0f, 54.0f, 15.0f), juce::Justification::right, false);
 
     auto plot = box.reduced(14.0f, 18.0f).translated(0.0f, 5.0f);
     auto dbX = [&](float db) { return plot.getX() + ((db + 60.0f) / 60.0f) * plot.getWidth(); };
@@ -525,19 +590,19 @@ void FidiuCompressorEditor::paintKneeOverlay(juce::Graphics& g, juce::Rectangle<
 }
 
 void FidiuCompressorEditor::paintWaveformDisplay(juce::Graphics& g, juce::Rectangle<float> area) {
-    auto plot = area.reduced(38.0f, 14.0f).withRight(area.getRight() - 14.0f);
+    auto plot = area.reduced(44.0f, 14.0f).withRight(area.getRight() - 14.0f);
     auto dbToY = [&](float db) {
         const float c = std::clamp(db, -60.0f, 0.0f);
         return plot.getY() + ((-c) / 60.0f) * plot.getHeight();
     };
 
-    g.setFont(juce::FontOptions(10.0f));
+    g.setFont(juce::FontOptions(12.0f));
     for (float db : { 0.0f, -6.0f, -12.0f, -18.0f, -24.0f, -36.0f, -48.0f, -60.0f }) {
         const float y = dbToY(db);
-        g.setColour(db == 0.0f ? juce::Colours::white.withAlpha(0.15f) : juce::Colours::white.withAlpha(0.045f));
+        g.setColour(db == 0.0f ? juce::Colours::white.withAlpha(0.16f) : juce::Colours::white.withAlpha(0.05f));
         g.drawHorizontalLine(static_cast<int>(y), plot.getX(), plot.getRight());
-        g.setColour(juce::Colour(0xff556073));
-        g.drawText(juce::String(static_cast<int>(db)), static_cast<int>(area.getX() + 4), static_cast<int>(y - 7), 28, 14, juce::Justification::right);
+        g.setColour(juce::Colour(0xff8b96aa));
+        g.drawText(juce::String(static_cast<int>(db)), static_cast<int>(area.getX() + 4), static_cast<int>(y - 8), 34, 16, juce::Justification::right, false);
     }
 
     const int n = FidiuCompressorProcessor::kHistSize;
@@ -609,14 +674,14 @@ void FidiuCompressorEditor::paintWaveformDisplay(juce::Graphics& g, juce::Rectan
     const float dashes[2] = { 4.0f, 4.0f };
     g.drawDashedLine(juce::Line<float>(plot.getX(), ty, plot.getRight(), ty), dashes, 2, 1.2f);
 
-    juce::Rectangle<float> tag(plot.getRight() - 68.0f, ty - 9.0f, 68.0f, 18.0f);
-    g.setColour(juce::Colour(0xe012161e));
+    juce::Rectangle<float> tag(plot.getRight() - 80.0f, ty - 10.0f, 80.0f, 20.0f);
+    g.setColour(juce::Colour(0xe812161e));
     g.fillRoundedRectangle(tag, 3.0f);
-    g.setColour(kCyan.withAlpha(0.75f));
+    g.setColour(kCyan.withAlpha(0.8f));
     g.drawRoundedRectangle(tag, 3.0f, 1.0f);
     g.setColour(kCyan);
-    g.setFont(juce::FontOptions(9.5f, juce::Font::bold));
-    g.drawText(juce::String(thresh, 1) + " dB", tag.toNearestInt(), juce::Justification::centred);
+    g.setFont(juce::FontOptions(11.5f, juce::Font::bold));
+    g.drawText(juce::String(thresh, 1) + " dB", tag.toNearestInt(), juce::Justification::centred, false);
 
     if (showKnee) {
         paintKneeOverlay(g, juce::Rectangle<float>(plot.getX() + 10.0f, plot.getBottom() - 190.0f, 180.0f, 180.0f));
@@ -624,46 +689,51 @@ void FidiuCompressorEditor::paintWaveformDisplay(juce::Graphics& g, juce::Rectan
 }
 
 void FidiuCompressorEditor::paintSidechainDisplay(juce::Graphics& g, juce::Rectangle<float> area) {
-    auto plot = area.reduced(40.0f, 20.0f).withRight(area.getRight() - 16.0f).withBottom(area.getBottom() - 24.0f);
+    auto plot = area.reduced(44.0f, 20.0f).withRight(area.getRight() - 16.0f).withBottom(area.getBottom() - 26.0f);
     auto eqDbY = [&](float db) { return plot.getY() + ((24.0f - std::clamp(db, -36.0f, 24.0f)) / 60.0f) * plot.getHeight(); };
 
-    g.setFont(juce::FontOptions(10.0f));
+    g.setFont(juce::FontOptions(12.0f));
     for (float f : { 20.0f, 50.0f, 100.0f, 200.0f, 500.0f, 1000.0f, 2000.0f, 5000.0f, 10000.0f, 20000.0f }) {
         const float x = freqToX(f, plot);
-        g.setColour(juce::Colours::white.withAlpha(0.05f));
+        g.setColour(juce::Colours::white.withAlpha(0.055f));
         g.drawVerticalLine(static_cast<int>(x), plot.getY(), plot.getBottom());
-        g.setColour(juce::Colour(0xff556073));
+        g.setColour(juce::Colour(0xff8b96aa));
         g.drawText(f >= 1000.0f ? juce::String(static_cast<int>(f / 1000.0f)) + "k" : juce::String(static_cast<int>(f)),
-                   static_cast<int>(x - 16), static_cast<int>(plot.getBottom() + 4), 32, 14, juce::Justification::centred);
+                   static_cast<int>(x - 18), static_cast<int>(plot.getBottom() + 4), 36, 16, juce::Justification::centred, false);
     }
 
     for (float db : { 18.0f, 12.0f, 6.0f, 0.0f, -6.0f, -12.0f, -24.0f, -36.0f }) {
         const float y = eqDbY(db);
-        g.setColour(db == 0.0f ? juce::Colours::white.withAlpha(0.16f) : juce::Colours::white.withAlpha(0.045f));
+        g.setColour(db == 0.0f ? juce::Colours::white.withAlpha(0.18f) : juce::Colours::white.withAlpha(0.05f));
         g.drawHorizontalLine(static_cast<int>(y), plot.getX(), plot.getRight());
-        g.setColour(juce::Colour(0xff556073));
+        g.setColour(juce::Colour(0xff8b96aa));
         g.drawText((db > 0.0f ? "+" : "") + juce::String(static_cast<int>(db)),
-                   static_cast<int>(area.getX() + 4), static_cast<int>(y - 7), 30, 14, juce::Justification::right);
+                   static_cast<int>(area.getX() + 4), static_cast<int>(y - 8), 34, 16, juce::Justification::right, false);
     }
 
-    // FFT Spectrum
+    // 4096-pt Interpolated FFT Spectrum
     const double sr = audioProcessor.currentSampleRate.load(std::memory_order_relaxed);
     const float nyquist = static_cast<float>(sr * 0.5);
     juce::Path fftPath;
     fftPath.startNewSubPath(plot.getX(), plot.getBottom());
-    for (int i = 0; i <= 140; ++i) {
-        const float norm = static_cast<float>(i) / 140.0f;
+    for (int i = 0; i <= 260; ++i) {
+        const float norm = static_cast<float>(i) / 260.0f;
         const float f = 20.0f * std::pow(1000.0f, norm);
-        const int bin = std::clamp(static_cast<int>(std::round((f / nyquist) * 512.0f)), 1, 511);
-        const float magDb = std::clamp(smoothedBins[static_cast<size_t>(bin)], -96.0f, 0.0f);
+        const float exactBin = std::clamp((f / nyquist) * 2048.0f, 1.0f, 2046.99f);
+        const int b0 = static_cast<int>(exactBin);
+        const int b1 = std::min(2047, b0 + 1);
+        const float frac = exactBin - static_cast<float>(b0);
+        const float interpDb = smoothedBins[static_cast<size_t>(b0)] * (1.0f - frac)
+                             + smoothedBins[static_cast<size_t>(b1)] * frac;
+        const float magDb = std::clamp(interpDb, -96.0f, 0.0f);
         const float yNorm = std::clamp(-magDb / 84.0f, 0.0f, 1.0f);
         fftPath.lineTo(freqToX(f, plot), plot.getY() + yNorm * plot.getHeight());
     }
     fftPath.lineTo(plot.getRight(), plot.getBottom());
     fftPath.closeSubPath();
 
-    juce::ColourGradient fftGrad(kOrange.withAlpha(0.32f), 0.0f, plot.getY(),
-                                 kCyan.withAlpha(0.05f), 0.0f, plot.getBottom(), false);
+    juce::ColourGradient fftGrad(kOrange.withAlpha(0.34f), 0.0f, plot.getY(),
+                                 kCyan.withAlpha(0.06f), 0.0f, plot.getBottom(), false);
     g.setGradientFill(fftGrad);
     g.fillPath(fftPath);
 
@@ -697,15 +767,21 @@ void FidiuCompressorEditor::paintSidechainDisplay(juce::Graphics& g, juce::Recta
     g.setColour(kCyan);
     g.strokePath(eqLine, juce::PathStrokeType(2.2f));
 
-    auto drawNode = [&](float nx, float ny, juce::Colour col, bool active) {
+    auto drawNode = [&](float nx, float ny, juce::Colour col, const juce::String& label, bool active) {
         g.setColour(active ? col : juce::Colour(0xff181c24));
         g.fillEllipse(nx - 6.0f, ny - 6.0f, 12.0f, 12.0f);
         g.setColour(col);
         g.drawEllipse(nx - 6.0f, ny - 6.0f, 12.0f, 12.0f, 2.0f);
+        g.setColour(active ? juce::Colour(0xfff1f5f9) : juce::Colour(0xff94a3b8));
+        g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+        g.drawText(label, static_cast<int>(nx - 42), static_cast<int>(ny - 24), 84, 15, juce::Justification::centred, false);
     };
-    drawNode(freqToX(hpfF, plot), eqDbY(-3.0f), hpfOn ? kCyan : juce::Colour(0xff475569), hpfOn);
-    drawNode(freqToX(lpfF, plot), eqDbY(-3.0f), lpfOn ? kCyan : juce::Colour(0xff475569), lpfOn);
-    drawNode(freqToX(eqF, plot), eqDbY(eqG), eqOn ? kAmber : juce::Colour(0xff475569), eqOn);
+    const juce::String hpfTxt = "HPF " + (hpfF >= 1000.0f ? juce::String(hpfF / 1000.0f, 1) + "k" : juce::String(static_cast<int>(std::round(hpfF))) + "Hz");
+    const juce::String lpfTxt = "LPF " + (lpfF >= 1000.0f ? juce::String(lpfF / 1000.0f, 1) + "k" : juce::String(static_cast<int>(std::round(lpfF))) + "Hz");
+    const juce::String eqTxt  = "EQ " + (eqG >= 0.0f ? juce::String("+") : juce::String("")) + juce::String(eqG, 1) + "dB";
+    drawNode(freqToX(hpfF, plot), eqDbY(-3.0f), hpfOn ? kCyan : juce::Colour(0xff475569), hpfTxt, hpfOn);
+    drawNode(freqToX(lpfF, plot), eqDbY(-3.0f), lpfOn ? kCyan : juce::Colour(0xff475569), lpfTxt, lpfOn);
+    drawNode(freqToX(eqF, plot), eqDbY(eqG), eqOn ? kAmber : juce::Colour(0xff475569), eqTxt, eqOn);
 }
 
 void FidiuCompressorEditor::paintMeters(juce::Graphics& g, juce::Rectangle<float> area) {
@@ -726,17 +802,17 @@ void FidiuCompressorEditor::paintMeters(juce::Graphics& g, juce::Rectangle<float
     const float pOut = audioProcessor.peakHoldOutDb.load(std::memory_order_relaxed);
     const float pGr = bypassed ? 0.0f : audioProcessor.peakHoldGrDb.load(std::memory_order_relaxed);
 
-    const float topY = area.getY() + 24.0f;
-    const float botY = area.getBottom() - 22.0f;
+    const float topY = area.getY() + 26.0f;
+    const float botY = area.getBottom() - 24.0f;
     const float barH = std::max(40.0f, botY - topY);
 
     // Scale ticks
-    g.setFont(juce::FontOptions(9.0f));
-    g.setColour(juce::Colour(0xff5d6678));
+    g.setFont(juce::FontOptions(11.0f));
+    g.setColour(juce::Colour(0xff8b96aa));
     const float ticks[5] = { 0.0f, -12.0f, -24.0f, -36.0f, -48.0f };
     for (int i = 0; i < 5; ++i) {
-        const float ty = topY + (static_cast<float>(i) / 4.0f) * (barH - 10.0f);
-        g.drawText(juce::String(static_cast<int>(ticks[i])), static_cast<int>(area.getX() + 2), static_cast<int>(ty), 22, 10, juce::Justification::right);
+        const float ty = topY + (static_cast<float>(i) / 4.0f) * (barH - 12.0f);
+        g.drawText(juce::String(static_cast<int>(ticks[i])), static_cast<int>(area.getX() + 2), static_cast<int>(ty), 26, 12, juce::Justification::right, false);
     }
 
     auto drawBottomUpBar = [&](float bx, float bw, float pct, juce::Colour topCol, juce::Colour botCol) {
@@ -750,12 +826,12 @@ void FidiuCompressorEditor::paintMeters(juce::Graphics& g, juce::Rectangle<float
         }
     };
 
-    const float xBase = area.getX() + 28.0f;
+    const float xBase = area.getX() + 38.0f;
     // IN stereo
-    drawBottomUpBar(xBase, 5.0f, inL, juce::Colour(0xff9db0c9), juce::Colour(0xff364152));
-    drawBottomUpBar(xBase + 7.0f, 5.0f, inR, juce::Colour(0xff9db0c9), juce::Colour(0xff364152));
+    drawBottomUpBar(xBase, 6.0f, inL, juce::Colour(0xff9db0c9), juce::Colour(0xff364152));
+    drawBottomUpBar(xBase + 8.0f, 6.0f, inR, juce::Colour(0xff9db0c9), juce::Colour(0xff364152));
     // GR top-down
-    const float grX = xBase + 20.0f;
+    const float grX = xBase + 38.0f;
     g.setColour(juce::Colour(0xff0a0c10));
     g.fillRect(grX, topY, 10.0f, barH);
     if (grPct > 0.005f) {
@@ -764,23 +840,28 @@ void FidiuCompressorEditor::paintMeters(juce::Graphics& g, juce::Rectangle<float
         g.fillRect(grX, topY, 10.0f, barH * grPct);
     }
     // OUT stereo
-    const float outX = grX + 18.0f;
-    drawBottomUpBar(outX, 5.0f, outL, kCyan.brighter(0.35f), juce::Colour(0xff186480));
-    drawBottomUpBar(outX + 7.0f, 5.0f, outR, kCyan.brighter(0.35f), juce::Colour(0xff186480));
+    const float outX = grX + 34.0f;
+    drawBottomUpBar(outX, 6.0f, outL, kCyan.brighter(0.35f), juce::Colour(0xff186480));
+    drawBottomUpBar(outX + 8.0f, 6.0f, outR, kCyan.brighter(0.35f), juce::Colour(0xff186480));
 
-    // Numeric readouts
-    g.setFont(juce::FontOptions(9.0f));
-    g.setColour(juce::Colour(0xff7d8799));
-    g.drawText(pIn <= -59.0f ? juce::String("-inf") : juce::String(pIn, 0), static_cast<int>(xBase - 6), static_cast<int>(area.getY() + 6), 24, 14, juce::Justification::centred);
-    g.drawText("IN", static_cast<int>(xBase - 4), static_cast<int>(botY + 4), 20, 14, juce::Justification::centred);
+    // Numeric readouts (generous widths, bold, zero ellipsis truncation)
+    g.setFont(juce::FontOptions(11.5f, juce::Font::bold));
+    g.setColour(juce::Colour(0xffcbd5e1));
+    g.drawText(pIn <= -59.0f ? juce::String("-inf") : juce::String(pIn, 1), static_cast<int>(xBase - 11), static_cast<int>(area.getY() + 5), 36, 16, juce::Justification::centred, false);
 
     g.setColour(kOrange);
-    g.drawText(pGr < 0.05f ? juce::String("0.0") : juce::String("-") + juce::String(pGr, 1), static_cast<int>(grX - 8), static_cast<int>(area.getY() + 6), 26, 14, juce::Justification::centred);
-    g.drawText("GR", static_cast<int>(grX - 4), static_cast<int>(botY + 4), 18, 14, juce::Justification::centred);
+    g.drawText(pGr < 0.05f ? juce::String("0.0") : juce::String("-") + juce::String(pGr, 1), static_cast<int>(grX - 13), static_cast<int>(area.getY() + 5), 36, 16, juce::Justification::centred, false);
 
+    g.setColour(juce::Colour(0xffe2e8f0));
+    g.drawText(pOut <= -59.0f ? juce::String("-inf") : juce::String(pOut, 1), static_cast<int>(outX - 11), static_cast<int>(area.getY() + 5), 36, 16, juce::Justification::centred, false);
+
+    g.setFont(juce::FontOptions(10.5f, juce::Font::bold));
+    g.setColour(juce::Colour(0xff8b96aa));
+    g.drawText("IN", static_cast<int>(xBase - 6), static_cast<int>(botY + 4), 26, 16, juce::Justification::centred, false);
+    g.setColour(kOrange);
+    g.drawText("GR", static_cast<int>(grX - 8), static_cast<int>(botY + 4), 26, 16, juce::Justification::centred, false);
     g.setColour(kCyan);
-    g.drawText(pOut <= -59.0f ? juce::String("-inf") : juce::String(pOut, 0), static_cast<int>(outX - 6), static_cast<int>(area.getY() + 6), 24, 14, juce::Justification::centred);
-    g.drawText("OUT", static_cast<int>(outX - 6), static_cast<int>(botY + 4), 24, 14, juce::Justification::centred);
+    g.drawText("OUT", static_cast<int>(outX - 8), static_cast<int>(botY + 4), 30, 16, juce::Justification::centred, false);
 }
 
 void FidiuCompressorEditor::paint(juce::Graphics& g) {
@@ -803,10 +884,19 @@ void FidiuCompressorEditor::paint(juce::Graphics& g) {
 
     g.setColour(juce::Colours::white);
     g.setFont(juce::FontOptions(15.0f, juce::Font::bold));
-    g.drawText("Fidiu", 42, 10, 44, 22, juce::Justification::left);
+    g.drawText("Fidiu", 42, 10, 44, 22, juce::Justification::left, false);
     g.setColour(kMutedText);
     g.setFont(juce::FontOptions(13.0f));
-    g.drawText("Compressor", 86, 11, 95, 22, juce::Justification::left);
+    g.drawText("Compressor", 86, 11, 86, 22, juce::Justification::left, false);
+
+    juce::Rectangle<float> verBadge(174.0f, 12.0f, 48.0f, 18.0f);
+    g.setColour(kCyan.withAlpha(0.12f));
+    g.fillRoundedRectangle(verBadge, 3.0f);
+    g.setColour(kCyan.withAlpha(0.38f));
+    g.drawRoundedRectangle(verBadge, 3.0f, 1.0f);
+    g.setColour(kCyan);
+    g.setFont(juce::FontOptions(10.5f, juce::Font::bold));
+    g.drawText("V1.0.2", verBadge.toNearestInt(), juce::Justification::centred, false);
 
     // Display Well radial vignette
     auto dispF = displayBounds.toFloat();
@@ -826,12 +916,12 @@ void FidiuCompressorEditor::paint(juce::Graphics& g) {
     const float curGr = audioProcessor.currentGrDb.load(std::memory_order_relaxed);
     if (laOn && laMs > 0.05f) {
         g.setColour(kCyan);
-        g.setFont(juce::FontOptions(11.0f));
-        g.drawText("LA " + juce::String(laMs, 1) + " ms", displayBounds.getRight() - 190, displayBounds.getY() + 8, 80, 16, juce::Justification::right);
+        g.setFont(juce::FontOptions(12.5f));
+        g.drawText("LA " + juce::String(laMs, 1) + " ms", displayBounds.getRight() - 216, displayBounds.getY() + 8, 92, 18, juce::Justification::right, false);
     }
-    g.setColour(curGr > 0.2f ? kOrange : juce::Colour(0xff64748b));
-    g.setFont(juce::FontOptions(11.5f, juce::Font::bold));
-    g.drawText("GR -" + juce::String(curGr, 1) + " dB", displayBounds.getRight() - 102, displayBounds.getY() + 8, 90, 16, juce::Justification::right);
+    g.setColour(curGr > 0.2f ? kOrange : juce::Colour(0xff7d8799));
+    g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
+    g.drawText("GR -" + juce::String(curGr, 1) + " dB", displayBounds.getRight() - 116, displayBounds.getY() + 8, 104, 18, juce::Justification::right, false);
 
     paintMeters(g, metersBounds.toFloat());
 
@@ -869,24 +959,31 @@ void FidiuCompressorEditor::resized() {
     const int w = getWidth();
     const int h = getHeight();
 
-    // Top Toolbar
-    presetBox.setBounds(w / 2 - 115, 8, 230, 26);
+    // Top Toolbar (Preset + A/B + Copy + Reset + Level Match + Bypass)
+    presetBox.setBounds(230, 8, 184, 26);
+    bankABtn.setBounds(422, 8, 32, 26);
+    bankBBtn.setBounds(455, 8, 32, 26);
+    copyAbBtn.setBounds(493, 8, 56, 26);
+    resetBtn.setBounds(555, 8, 52, 26);
+
+    levelMatchBtn.setBounds(w - 196, 8, 96, 26);
     bypassBtn.setBounds(w - 92, 8, 78, 26);
 
     const int topH = 42;
-    const int railH = 112;
+    const int railH = 114;
     const int conH = 196;
     const int dispH = std::max(210, h - topH - conH - railH);
 
-    displayBounds = { 0, topH, w - 104, dispH };
-    metersBounds  = { w - 104, topH, 104, dispH };
+    const int meterW = 144;
+    displayBounds = { 0, topH, w - meterW, dispH };
+    metersBounds  = { w - meterW, topH, meterW, dispH };
     consoleBounds = { 0, topH + dispH, w, conH };
     scRailBounds  = { 0, topH + dispH + conH, w, railH };
 
     // Floating Display Mode Buttons
-    dispModeBtn.setBounds(44, topH + 8, 62, 22);
-    scModeBtn.setBounds(108, topH + 8, 92, 22);
-    kneeToggleBtn.setBounds(204, topH + 8, 48, 22);
+    dispModeBtn.setBounds(50, topH + 8, 66, 22);
+    scModeBtn.setBounds(118, topH + 8, 98, 22);
+    kneeToggleBtn.setBounds(220, topH + 8, 52, 22);
 
     // Style & Coloriture Sub-Bar
     const int barY = consoleBounds.getY() + 8;
@@ -901,9 +998,9 @@ void FidiuCompressorEditor::resized() {
         cx += 57;
     }
 
-    // Main Pro-C Knob Console
+    // Main Pro-C Knob Console (11 controls including Parallel Mix & Dry Gain)
     const int knobY = consoleBounds.getY() + 62;
-    const int colW = (w - 32) / 10;
+    const int colW = (w - 32) / 11;
     threshSlider.setBounds(16, knobY - 6, colW, 108);
     ratioSlider.setBounds(16 + colW * 1, knobY, colW, 96);
     kneeSlider.setBounds(16 + colW * 2, knobY + 4, colW, 88);
@@ -911,48 +1008,56 @@ void FidiuCompressorEditor::resized() {
     attackSlider.setBounds(16 + colW * 4, knobY + 4, colW, 88);
     holdSlider.setBounds(16 + colW * 5, knobY + 4, colW, 88);
     releaseSlider.setBounds(16 + colW * 6, knobY + 4, colW, 88);
-    autoRelBtn.setBounds(16 + colW * 6 + colW / 2 - 24, knobY + 94, 48, 18);
+    autoRelBtn.setBounds(16 + colW * 6 + colW / 2 - 26, knobY + 94, 52, 18);
     charSlider.setBounds(16 + colW * 7, knobY + 4, colW, 88);
     mixSlider.setBounds(16 + colW * 8, knobY + 4, colW, 88);
+    parallelBtn.setBounds(16 + colW * 8 + colW / 2 - 30, knobY + 94, 60, 18);
     gainSlider.setBounds(16 + colW * 9, knobY + 4, colW, 88);
-    autoGainBtn.setBounds(16 + colW * 9 + colW / 2 - 32, knobY + 94, 64, 18);
+    autoGainBtn.setBounds(16 + colW * 9 + colW / 2 - 36, knobY + 94, 72, 18);
+    dryGainSlider.setBounds(16 + colW * 10, knobY + 4, colW, 88);
 
-    // Integrated Lower Lookahead & Sidechain Rail
+    // Integrated Lower Lookahead, Mid/Side/Stereo & Sidechain Rail
     const int ry = scRailBounds.getY() + 18;
+    const int extraGap = std::clamp((w - 980) / 5, 0, 42);
     int rx = 14;
-    lookaheadBtn.setBounds(rx, ry + 2, 68, 20);
+    lookaheadBtn.setBounds(rx, ry + 2, 72, 20);
     for (int i = 0; i < 3; ++i)
-        osBtns[static_cast<size_t>(i)].setBounds(rx + i * 23, ry + 28, 22, 18);
+        osBtns[static_cast<size_t>(i)].setBounds(rx + i * 24, ry + 28, 23, 18);
     rx += 76;
-    lookaheadSlider.setBounds(rx, ry, 60, 74); rx += 64;
-    linkSlider.setBounds(rx, ry, 58, 74); rx += 62;
-    msSlider.setBounds(rx, ry, 58, 74); rx += 74;
+    lookaheadSlider.setBounds(rx, ry, 54, 74); rx += 56;
+    linkSlider.setBounds(rx, ry, 52, 74); rx += 54;
+    msSlider.setBounds(rx, ry, 52, 74); rx += 56;
+
+    // Stereo / Mid / Side mode selector
+    for (int i = 0; i < 3; ++i)
+        chModeBtns[static_cast<size_t>(i)].setBounds(rx, ry + i * 22, 54, 19);
+    rx += 60 + extraGap;
 
     // Sidechain routing
-    scIntBtn.setBounds(rx, ry + 2, 54, 20);
-    scExtBtn.setBounds(rx + 56, ry + 2, 54, 20);
-    scAudBtn.setBounds(rx, ry + 28, 110, 20);
-    rx += 124;
+    scIntBtn.setBounds(rx, ry + 2, 47, 20);
+    scExtBtn.setBounds(rx + 49, ry + 2, 47, 20);
+    scAudBtn.setBounds(rx, ry + 28, 96, 20);
+    rx += 102 + extraGap;
 
-    // HPF
-    scHpfBtn.setBounds(rx, ry + 2, 66, 20);
+    // HPF (23px each for "6", "12", "24", "48")
+    scHpfBtn.setBounds(rx, ry + 2, 95, 20);
     for (int i = 0; i < 4; ++i)
-        hpfSlopeBtns[static_cast<size_t>(i)].setBounds(rx + i * 17, ry + 28, 16, 18);
-    rx += 72;
-    scHpfSlider.setBounds(rx, ry, 58, 74); rx += 68;
+        hpfSlopeBtns[static_cast<size_t>(i)].setBounds(rx + i * 24, ry + 28, 23, 19);
+    rx += 100;
+    scHpfSlider.setBounds(rx, ry, 54, 74); rx += 58 + extraGap;
 
-    // LPF
-    scLpfBtn.setBounds(rx, ry + 2, 66, 20);
+    // LPF (23px each for "6", "12", "24", "48")
+    scLpfBtn.setBounds(rx, ry + 2, 95, 20);
     for (int i = 0; i < 4; ++i)
-        lpfSlopeBtns[static_cast<size_t>(i)].setBounds(rx + i * 17, ry + 28, 16, 18);
-    rx += 72;
-    scLpfSlider.setBounds(rx, ry, 58, 74); rx += 68;
+        lpfSlopeBtns[static_cast<size_t>(i)].setBounds(rx + i * 24, ry + 28, 23, 19);
+    rx += 100;
+    scLpfSlider.setBounds(rx, ry, 54, 74); rx += 58 + extraGap;
 
     // SC Bell EQ
-    scEqBtn.setBounds(rx, ry + 14, 54, 22); rx += 60;
-    scEqFreqSlider.setBounds(rx, ry, 56, 74); rx += 60;
-    scEqGainSlider.setBounds(rx, ry, 56, 74); rx += 60;
-    scEqQSlider.setBounds(rx, ry, 56, 74);
+    scEqBtn.setBounds(rx, ry + 14, 54, 22); rx += 58;
+    scEqFreqSlider.setBounds(rx, ry, 52, 74); rx += 54;
+    scEqGainSlider.setBounds(rx, ry, 52, 74); rx += 54;
+    scEqQSlider.setBounds(rx, ry, 52, 74);
 }
 
 void FidiuCompressorEditor::mouseDown(const juce::MouseEvent& e) {
@@ -964,13 +1069,13 @@ void FidiuCompressorEditor::mouseDown(const juce::MouseEvent& e) {
 
     auto area = displayBounds.toFloat();
     if (displayMode == DisplayMode::Dynamics) {
-        auto plot = area.reduced(38.0f, 14.0f).withRight(area.getRight() - 14.0f);
+        auto plot = area.reduced(44.0f, 14.0f).withRight(area.getRight() - 14.0f);
         const float thresh = audioProcessor.apvts.getRawParameterValue("threshold")->load();
         const float ty = plot.getY() + ((-thresh) / 60.0f) * plot.getHeight();
         if (std::abs(e.position.y - ty) < 16.0f)
             dragTarget = DragTarget::Threshold;
     } else {
-        auto plot = area.reduced(40.0f, 20.0f).withRight(area.getRight() - 16.0f).withBottom(area.getBottom() - 24.0f);
+        auto plot = area.reduced(44.0f, 20.0f).withRight(area.getRight() - 16.0f).withBottom(area.getBottom() - 26.0f);
         auto eqDbY = [&](float db) { return plot.getY() + ((24.0f - std::clamp(db, -36.0f, 24.0f)) / 60.0f) * plot.getHeight(); };
         const float hpfX = freqToX(audioProcessor.apvts.getRawParameterValue("scHpfFreq")->load(), plot);
         const float lpfX = freqToX(audioProcessor.apvts.getRawParameterValue("scLpfFreq")->load(), plot);
@@ -993,11 +1098,11 @@ void FidiuCompressorEditor::mouseDrag(const juce::MouseEvent& e) {
     };
 
     if (dragTarget == DragTarget::Threshold) {
-        auto plot = area.reduced(38.0f, 14.0f).withRight(area.getRight() - 14.0f);
+        auto plot = area.reduced(44.0f, 14.0f).withRight(area.getRight() - 14.0f);
         const float n = std::clamp((e.position.y - plot.getY()) / std::max(1.0f, plot.getHeight()), 0.0f, 1.0f);
         setVal("threshold", -60.0f * n);
     } else {
-        auto plot = area.reduced(40.0f, 20.0f).withRight(area.getRight() - 16.0f).withBottom(area.getBottom() - 24.0f);
+        auto plot = area.reduced(44.0f, 20.0f).withRight(area.getRight() - 16.0f).withBottom(area.getBottom() - 26.0f);
         const float freq = xToFreq(e.position.x, plot);
         if (dragTarget == DragTarget::Hpf) {
             setVal("scHpfOn", 1.0f);

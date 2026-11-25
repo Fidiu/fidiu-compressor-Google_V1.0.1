@@ -16,6 +16,57 @@ FidiuCompressorProcessor::FidiuCompressorProcessor()
     for (int i = 0; i < kScFftSize; ++i) {
         scFftRing[static_cast<size_t>(i)].store(0.0f, std::memory_order_relaxed);
     }
+    bankAValues = captureCurrentParams();
+    bankBValues = bankAValues;
+}
+
+std::vector<float> FidiuCompressorProcessor::captureCurrentParams() const {
+    const auto& params = getParameters();
+    std::vector<float> vals;
+    vals.reserve(static_cast<size_t>(params.size()));
+    for (auto* param : params)
+        vals.push_back(param->getValue());
+    return vals;
+}
+
+void FidiuCompressorProcessor::applySavedParams(const std::vector<float>& vals) {
+    const auto& params = getParameters();
+    const size_t n = std::min(vals.size(), static_cast<size_t>(params.size()));
+    for (size_t i = 0; i < n; ++i) {
+        params[static_cast<int>(i)]->beginChangeGesture();
+        params[static_cast<int>(i)]->setValueNotifyingHost(vals[i]);
+        params[static_cast<int>(i)]->endChangeGesture();
+    }
+}
+
+void FidiuCompressorProcessor::selectBank(int bankIdx) {
+    if (bankIdx == activeBank || (bankIdx != 0 && bankIdx != 1))
+        return;
+    if (activeBank == 0) {
+        bankAValues = captureCurrentParams();
+        activeBank = 1;
+        applySavedParams(bankBValues);
+    } else {
+        bankBValues = captureCurrentParams();
+        activeBank = 0;
+        applySavedParams(bankAValues);
+    }
+}
+
+void FidiuCompressorProcessor::copyActiveBankToOther() {
+    auto cur = captureCurrentParams();
+    if (activeBank == 0)
+        bankBValues = cur;
+    else
+        bankAValues = cur;
+}
+
+void FidiuCompressorProcessor::resetToDefault() {
+    for (auto* param : getParameters()) {
+        param->beginChangeGesture();
+        param->setValueNotifyingHost(param->getDefaultValue());
+        param->endChangeGesture();
+    }
 }
 
 void FidiuCompressorProcessor::resetPeaks() {
@@ -44,12 +95,16 @@ juce::AudioProcessorValueTreeState::ParameterLayout FidiuCompressorProcessor::cr
     p.push_back(std::make_unique<juce::AudioParameterChoice>("colorMode", "Color Mode",
         juce::StringArray{"Pure", "Tube", "Tape", "Xfmr"}, 1));
     p.push_back(std::make_unique<juce::AudioParameterFloat>("mix", "Mix", 0.0f, 100.0f, 100.0f));
+    p.push_back(std::make_unique<juce::AudioParameterBool>("parallelMode", "Parallel Mode", false));
     p.push_back(std::make_unique<juce::AudioParameterFloat>("wetGain", "Wet Gain", -18.0f, 36.0f, 2.4f));
     p.push_back(std::make_unique<juce::AudioParameterBool>("autoGain", "Auto Gain", false));
+    p.push_back(std::make_unique<juce::AudioParameterFloat>("dryGain", "Dry Gain", -36.0f, 12.0f, 0.0f));
     p.push_back(std::make_unique<juce::AudioParameterBool>("lookaheadOn", "Lookahead On", true));
     p.push_back(std::make_unique<juce::AudioParameterFloat>("lookaheadMs", "Lookahead", 0.0f, 20.0f, 4.0f));
     p.push_back(std::make_unique<juce::AudioParameterChoice>("oversampling", "Oversampling",
         juce::StringArray{"1x", "2x", "4x"}, 1));
+    p.push_back(std::make_unique<juce::AudioParameterChoice>("channelMode", "Channel Mode",
+        juce::StringArray{"Stereo", "Mid", "Side"}, 0));
     p.push_back(std::make_unique<juce::AudioParameterFloat>("stereoLink", "Stereo Link", 0.0f, 100.0f, 100.0f));
     p.push_back(std::make_unique<juce::AudioParameterFloat>("msBalance", "M/S Balance", -100.0f, 100.0f, 0.0f));
     p.push_back(std::make_unique<juce::AudioParameterBool>("scExt", "External SC", false));
@@ -69,6 +124,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout FidiuCompressorProcessor::cr
         juce::NormalisableRange<float>(40.0f, 16000.0f, 1.0f, 0.25f), 2400.0f));
     p.push_back(std::make_unique<juce::AudioParameterFloat>("scEqGain", "SC Bell Gain", -18.0f, 18.0f, 0.0f));
     p.push_back(std::make_unique<juce::AudioParameterFloat>("scEqQ", "SC Bell Q", 0.3f, 8.0f, 1.20f));
+    p.push_back(std::make_unique<juce::AudioParameterBool>("levelMatch", "Level Match", false));
     p.push_back(std::make_unique<juce::AudioParameterBool>("bypass", "Bypass", false));
 
     return { p.begin(), p.end() };
@@ -120,10 +176,13 @@ void FidiuCompressorProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
     const bool autoRel = apvts.getRawParameterValue("autoRelease")->load() > 0.5f;
     const float charPct = apvts.getRawParameterValue("character")->load();
     const float mix = apvts.getRawParameterValue("mix")->load() / 100.0f;
+    const bool parallelOn = apvts.getRawParameterValue("parallelMode")->load() > 0.5f;
     const float wetGainDb = apvts.getRawParameterValue("wetGain")->load();
     const bool autoGain = apvts.getRawParameterValue("autoGain")->load() > 0.5f;
+    const float dryGainDb = apvts.getRawParameterValue("dryGain")->load();
     const bool laOn = apvts.getRawParameterValue("lookaheadOn")->load() > 0.5f;
     const float laMs = apvts.getRawParameterValue("lookaheadMs")->load();
+    const int chMode = std::clamp(static_cast<int>(std::round(apvts.getRawParameterValue("channelMode")->load())), 0, 2);
     const float link = apvts.getRawParameterValue("stereoLink")->load() / 100.0f;
     const float msBal = apvts.getRawParameterValue("msBalance")->load() / 100.0f;
     const bool scExt = apvts.getRawParameterValue("scExt")->load() > 0.5f && scBus.getNumChannels() > 0;
@@ -138,6 +197,7 @@ void FidiuCompressorProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
     const float eqFreq = apvts.getRawParameterValue("scEqFreq")->load();
     const float eqGain = apvts.getRawParameterValue("scEqGain")->load();
     const float eqQ = apvts.getRawParameterValue("scEqQ")->load();
+    const bool levelMatchOn = apvts.getRawParameterValue("levelMatch")->load() > 0.5f;
     const bool bypassed = apvts.getRawParameterValue("bypass")->load() > 0.5f;
 
     dsp.updateFilters(hpfFreq, hpfSlope, lpfFreq, lpfSlope, eqFreq, eqGain, eqQ);
@@ -152,11 +212,14 @@ void FidiuCompressorProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
         autoMakeupDb = std::min(18.0f, estGr * 0.72f);
     }
     const float wetGain = juce::Decibels::decibelsToGain(wetGainDb + autoMakeupDb);
+    const float dryGain = (dryGainDb <= -35.8f) ? 0.0f : juce::Decibels::decibelsToGain(dryGainDb);
 
     const float attCoeff = std::exp(-1.0f / (std::max(0.000005f, (attackMs * style.attackScale) / 1000.0f) * static_cast<float>(dsp.sr)));
     const float fastRelCoeff = std::exp(-1.0f / (std::max(0.005f, (releaseMs * style.releaseScale) / 1000.0f) * static_cast<float>(dsp.sr)));
     const float slowRelCoeff = std::exp(-1.0f / (std::max(0.18f, (releaseMs * 3.8f) / 1000.0f) * static_cast<float>(dsp.sr)));
     const float rmsCoeff = std::exp(-1.0f / (0.012f * static_cast<float>(dsp.sr)));
+    const float matchRmsCoeff = std::exp(-1.0f / (0.35f * static_cast<float>(dsp.sr)));
+    const float matchSmoothCoeff = std::exp(-1.0f / (0.20f * static_cast<float>(dsp.sr)));
     const int holdSamples = static_cast<int>(std::round((holdMs / 1000.0f) * dsp.sr));
     const float laSmoothCoeff = laSamples > 2 ? std::exp(-3.2f / static_cast<float>(laSamples)) : 0.0f;
 
@@ -204,7 +267,15 @@ void FidiuCompressorProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
 
         float detInL = scL;
         float detInR = scR;
-        if (std::abs(msBal) > 0.01f) {
+        if (chMode == 1) {
+            const float mid = (scL + scR) * 0.70710678f;
+            detInL = mid;
+            detInR = mid;
+        } else if (chMode == 2) {
+            const float side = (scL - scR) * 0.70710678f;
+            detInL = side;
+            detInR = side;
+        } else if (std::abs(msBal) > 0.01f) {
             const float mid = (scL + scR) * 0.70710678f;
             const float side = (scL - scR) * 0.70710678f;
             detInL = mid * (msBal >= 0.0f ? 1.0f : 1.0f + msBal);
@@ -247,7 +318,19 @@ void FidiuCompressorProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
         const float gainLinR = juce::Decibels::decibelsToGain(-grR);
 
         float compL = dL, compR = dR;
-        if (std::abs(msBal) > 0.01f) {
+        if (chMode == 1) {
+            const float mid = (dL + dR) * 0.70710678f;
+            const float side = (dL - dR) * 0.70710678f;
+            const float pMid = mid * gainLinL;
+            compL = (pMid + side) * 0.70710678f;
+            compR = (pMid - side) * 0.70710678f;
+        } else if (chMode == 2) {
+            const float mid = (dL + dR) * 0.70710678f;
+            const float side = (dL - dR) * 0.70710678f;
+            const float pSide = side * gainLinR;
+            compL = (mid + pSide) * 0.70710678f;
+            compR = (mid - pSide) * 0.70710678f;
+        } else if (std::abs(msBal) > 0.01f) {
             const float mid = (dL + dR) * 0.70710678f;
             const float side = (dL - dR) * 0.70710678f;
             const float midGain = msBal >= 0.0f ? gainLinL : 1.0f + (gainLinL - 1.0f) * (1.0f + msBal);
@@ -262,8 +345,33 @@ void FidiuCompressorProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
         const float satL = fidiu::FidiuDSP::saturateSample(compL, drive, colorIdx);
         const float satR = fidiu::FidiuDSP::saturateSample(compR, drive, colorIdx);
 
-        float outL = scAud ? scL : (bypassed ? dL : dL * (1.0f - mix) + satL * wetGain * mix);
-        float outR = scAud ? scR : (bypassed ? dR : dR * (1.0f - mix) + satR * wetGain * mix);
+        const float dryMixFactor = parallelOn ? 1.0f : (1.0f - mix);
+        float outL = dL * dryGain * dryMixFactor + satL * wetGain * mix;
+        float outR = dR * dryGain * dryMixFactor + satR * wetGain * mix;
+
+        if (!bypassed && !scAud) {
+            const float inPow = 0.5f * (dL * dL + dR * dR);
+            const float wetPow = 0.5f * (outL * outL + outR * outR);
+            if (inPow > 1e-8f) {
+                dsp.matchInSq = matchRmsCoeff * dsp.matchInSq + (1.0f - matchRmsCoeff) * inPow;
+                dsp.matchWetSq = matchRmsCoeff * dsp.matchWetSq + (1.0f - matchRmsCoeff) * wetPow;
+                const float targetMatch = std::clamp(std::sqrt(dsp.matchInSq / std::max(dsp.matchWetSq, 1e-8f)), 0.25f, 4.0f);
+                dsp.matchGain = matchSmoothCoeff * dsp.matchGain + (1.0f - matchSmoothCoeff) * targetMatch;
+            }
+            if (levelMatchOn) {
+                outL *= dsp.matchGain;
+                outR *= dsp.matchGain;
+            }
+        }
+
+        if (bypassed) {
+            outL = dL;
+            outR = dR;
+        }
+        if (scAud) {
+            outL = scL;
+            outR = scR;
+        }
         chL[i] = outL;
         if (chR != chL) chR[i] = outR;
 
@@ -320,15 +428,42 @@ juce::AudioProcessorEditor* FidiuCompressorProcessor::createEditor() {
 }
 
 void FidiuCompressorProcessor::getStateInformation(juce::MemoryBlock& destData) {
+    juce::XmlElement root("FIDIU_STATE");
+    root.setAttribute("activeBank", activeBank);
     auto state = apvts.copyState();
-    std::unique_ptr<juce::XmlElement> xml(state.createXml());
-    copyXmlToBinary(*xml, destData);
+    root.addChildElement(state.createXml().release());
+
+    auto writeBank = [](juce::XmlElement& parent, const char* name, const std::vector<float>& vals) {
+        auto* el = parent.createNewChildElement(name);
+        juce::StringArray arr;
+        for (float v : vals) arr.add(juce::String(v, 6));
+        el->setAttribute("v", arr.joinIntoString(","));
+    };
+    writeBank(root, "BANK_A", activeBank == 0 ? captureCurrentParams() : bankAValues);
+    writeBank(root, "BANK_B", activeBank == 1 ? captureCurrentParams() : bankBValues);
+    copyXmlToBinary(root, destData);
 }
 
 void FidiuCompressorProcessor::setStateInformation(const void* data, int sizeInBytes) {
     std::unique_ptr<juce::XmlElement> xml(getXmlFromBinary(data, sizeInBytes));
-    if (xml && xml->hasTagName(apvts.state.getType()))
+    if (!xml) return;
+
+    if (xml->hasTagName("FIDIU_STATE")) {
+        activeBank = std::clamp(xml->getIntAttribute("activeBank", 0), 0, 1);
+        if (auto* paramsEl = xml->getChildByName(apvts.state.getType().toString()))
+            apvts.replaceState(juce::ValueTree::fromXml(*paramsEl));
+        auto readBank = [](const juce::XmlElement& parent, const char* name, std::vector<float>& dst) {
+            if (auto* el = parent.getChildByName(name)) {
+                auto tokens = juce::StringArray::fromTokens(el->getStringAttribute("v"), ",", "");
+                dst.clear();
+                for (const auto& t : tokens) dst.push_back(t.getFloatValue());
+            }
+        };
+        readBank(*xml, "BANK_A", bankAValues);
+        readBank(*xml, "BANK_B", bankBValues);
+    } else if (xml->hasTagName(apvts.state.getType())) {
         apvts.replaceState(juce::ValueTree::fromXml(*xml));
+    }
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() {

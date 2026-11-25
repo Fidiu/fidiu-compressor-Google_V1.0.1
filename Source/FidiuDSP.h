@@ -129,6 +129,8 @@ public:
         rmsSqL = rmsSqR = smoothedGrL = smoothedGrR = 0.0f;
         holdCounterL = holdCounterR = 0;
         dcPrevInL = dcPrevOutL = dcPrevInR = dcPrevOutR = 0.0f;
+        matchInSq = matchWetSq = 0.0f;
+        matchGain = 1.0f;
         if (oversampler2x) oversampler2x->reset();
         if (oversampler4x) oversampler4x->reset();
     }
@@ -203,6 +205,7 @@ public:
     float rmsSqL = 0, rmsSqR = 0, smoothedGrL = 0, smoothedGrR = 0;
     int holdCounterL = 0, holdCounterR = 0;
     float dcPrevInL = 0, dcPrevOutL = 0, dcPrevInR = 0, dcPrevOutR = 0;
+    float matchInSq = 0.0f, matchWetSq = 0.0f, matchGain = 1.0f;
 };
 
 } // namespace fidiu

@@ -30,11 +30,15 @@ public:
     void setStateInformation(const void* data, int sizeInBytes) override;
 
     void resetPeaks();
+    void selectBank(int bankIdx);
+    void copyActiveBankToOther();
+    void resetToDefault();
+    int getActiveBank() const { return activeBank; }
 
     juce::AudioProcessorValueTreeState apvts;
 
     static constexpr int kHistSize = 300;
-    static constexpr int kScFftSize = 1024;
+    static constexpr int kScFftSize = 4096;
 
     std::array<std::atomic<float>, kHistSize> histInDb;
     std::array<std::atomic<float>, kHistSize> histOutDb;
@@ -58,7 +62,13 @@ public:
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
+    std::vector<float> captureCurrentParams() const;
+    void applySavedParams(const std::vector<float>& vals);
+
     fidiu::FidiuDSP dsp;
+    int activeBank = 0;
+    std::vector<float> bankAValues;
+    std::vector<float> bankBValues;
 
     int telemetrySamples = 0;
     int peakDecayCounter = 0;

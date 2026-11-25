@@ -1,10 +1,12 @@
-# Fidiu Compressor — VST3 & Windows .EXE Installer Guide
+# Fidiu Compressor V1.0.2 — VST3 & Windows .EXE Installer Guide
 
 Fidiu Compressor is a precision dynamics processor inspired by FabFilter Pro-C 3, featuring:
 - 8 Compression Styles (Clean, Classic, Opto, Vocal, Mastering, Bus, Punch, Pumping)
+- Dedicated Mid / Side / Stereo signal processing modes + continuous M/S Balance
+- Overall Parallel Compression (additive Parallel mode + independent Dry Gain & Wet Gain)
 - Sample-accurate Lookahead delay line (0–20 ms) with DAW PDC (`setLatencySamples`)
-- Cascaded 24/48 dB/oct Butterworth Sidechain HPF/LPF + Bell EQ + External Sidechain Bus
-- Analog Sound Coloriture (Pure, Tube, Tape, Transformer) + Oversampling
+- Cascaded 24/48 dB/oct Butterworth Sidechain HPF/LPF + Bell EQ + 4096-pt FFT + External Sidechain Bus
+- Analog Sound Coloriture (Pure, Tube, Tape, Transformer) + Oversampling + A/B Compare & Level Match
 
 ## 1. Build Windows Installer (`FidiuCompressor-Setup.exe`)
 
